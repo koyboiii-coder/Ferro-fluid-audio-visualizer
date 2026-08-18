@@ -5,7 +5,13 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
-import { spikeFieldGLSL, ringPlaneVertexGLSL, ringPlaneFragmentGLSL } from "./shaders.js";
+import {
+  spikeFieldGLSL,
+  ringPlaneVertexGLSL,
+  ringPlaneFragmentGLSL,
+  bgHalftoneVertexGLSL,
+  bgHalftoneFragmentGLSL,
+} from "./shaders.js";
 import { AudioEngine } from "./audio.js";
 import "./styles/liquid-chrome.css";
 
@@ -365,6 +371,31 @@ shapeRingBtn.addEventListener("click", () => {
   shapeSphereBtn.classList.remove("is-active");
 });
 
+// Halftone background: a dot-grid version of the old CSS blurred aura,
+// rendered in WebGL so dot size can track brightness. Parented to the
+// camera (not the scene root) so it always fills the view regardless of
+// how OrbitControls orbits — like a skybox. Its own alpha is 0 between
+// dots, so the CSS --lc-void/vignette layer behind the transparent canvas
+// still provides the base color and corner darkening.
+const bgUniforms = {
+  uTime: uniforms.uTime,
+  uAuraScale: { value: 1 },
+  uAuraOpacity: { value: 0.4 },
+  uAura1: { value: new THREE.Color(0x8fd0ff) },
+  uAura2: { value: new THREE.Color(0xffb98f) },
+};
+const bgMaterial = new THREE.ShaderMaterial({
+  vertexShader: bgHalftoneVertexGLSL,
+  fragmentShader: bgHalftoneFragmentGLSL,
+  transparent: true,
+  depthWrite: false,
+  uniforms: bgUniforms,
+});
+const bgPlane = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), bgMaterial);
+bgPlane.position.set(0, 0, -16);
+camera.add(bgPlane);
+scene.add(camera);
+
 // accent light: colored rim/gel light, tinted from the "Acento" color picker —
 // the object's main shape reads from the studio envmap above; this just adds
 // a subtle wash of color into the reflections, like a gel over one softbox.
@@ -457,9 +488,8 @@ composer.addPass(new OutputPass());
 
 // "Fondo" now drives the liquid-chrome CSS backdrop's base tone (--lc-void)
 // instead of the WebGL scene's clear color — the canvas is transparent, so
-// that animated backdrop is what's actually visible around the object.
-const lcBg = document.querySelector(".lc-bg");
-
+// that solid color (plus the WebGL halftone aura drawn on top of it) is
+// what's actually visible around the object.
 function setBackground(hex) {
   document.documentElement.style.setProperty("--lc-void", hex);
 }
@@ -582,8 +612,8 @@ function applyPreset(preset) {
 
   const root = document.documentElement.style;
   const [auraA, auraB] = auraPairFromGlow(preset.glow);
-  root.setProperty("--lc-aura-1", auraA);
-  root.setProperty("--lc-aura-2", auraB);
+  bgUniforms.uAura1.value.set(auraA);
+  bgUniforms.uAura2.value.set(auraB);
   if (preset.vignette) root.setProperty("--lc-vignette", preset.vignette);
   else root.removeProperty("--lc-vignette");
 }
@@ -754,10 +784,8 @@ function animate() {
   const bassNow = bands.bass * uniforms.uAmp.value;
   bgAuraLevel += (bassNow - bgAuraLevel) * (bassNow > bgAuraLevel ? 0.35 : 0.05);
   const pulse = parseFloat(bgFlowSlider.value);
-  const auraScale = THREE.MathUtils.clamp(1 + bgAuraLevel * 0.09 * pulse, 1, 1.4);
-  const auraOpacity = THREE.MathUtils.clamp(0.32 + bgAuraLevel * 0.14 * pulse, 0.12, 0.85);
-  lcBg.style.setProperty("--lc-aura-scale", auraScale.toFixed(3));
-  lcBg.style.setProperty("--lc-aura-opacity", auraOpacity.toFixed(3));
+  bgUniforms.uAuraScale.value = THREE.MathUtils.clamp(1 + bgAuraLevel * 0.09 * pulse, 1, 1.4);
+  bgUniforms.uAuraOpacity.value = THREE.MathUtils.clamp(0.32 + bgAuraLevel * 0.14 * pulse, 0.12, 0.85);
 
   controls.update();
   composer.render();

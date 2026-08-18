@@ -207,3 +207,61 @@ export const ringPlaneFragmentGLSL = /* glsl */ `
     gl_FragColor = vec4(outColor, outAlpha);
   }
 `;
+
+// Halftone backdrop: the same two-blob aura (soft glow, bass-reactive
+// scale/opacity, gentle drift) but expressed as a grid of dots whose SIZE
+// tracks local brightness — print-halftone style — instead of a blurred
+// gradient. Rendered on a plane parented to the camera (see main.js) so it
+// always fills the background regardless of orbit, with alpha 0 in the
+// gaps between dots so the CSS --lc-void/vignette underneath still shows.
+export const bgHalftoneVertexGLSL = /* glsl */ `
+  varying vec2 vPos;
+  void main() {
+    vPos = position.xy;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+export const bgHalftoneFragmentGLSL = /* glsl */ `
+  varying vec2 vPos;
+
+  uniform float uTime;
+  uniform float uAuraScale;
+  uniform float uAuraOpacity;
+  uniform vec3 uAura1;
+  uniform vec3 uAura2;
+
+  float blobField(vec2 p, vec2 center, float radius) {
+    return smoothstep(radius, 0.0, length(p - center));
+  }
+
+  void main() {
+    vec2 p = vPos;
+
+    // slow, non-repeating drift (incommensurate frequencies) so the blobs
+    // wander gently instead of sitting frozen or orbiting mechanically.
+    vec2 driftA = vec2(sin(uTime * 0.11) * 1.4, cos(uTime * 0.087) * 1.0);
+    vec2 driftB = vec2(cos(uTime * 0.079) * 1.3, sin(uTime * 0.13) * 1.1);
+
+    float radius = 9.0 * uAuraScale;
+    float brightA = blobField(p, vec2(-4.2, 2.1) + driftA, radius) * uAuraOpacity;
+    float brightB = blobField(p, vec2(4.6, -1.6) + driftB, radius) * uAuraOpacity;
+
+    float cellSize = 0.5;
+    vec2 cell = floor(p / cellSize);
+    vec2 cellCenter = (cell + 0.5) * cellSize;
+    float dist = length(p - cellCenter);
+    float aa = fwidth(dist);
+
+    float rA = brightA * cellSize * 0.46;
+    float rB = brightB * cellSize * 0.46;
+    float maskA = 1.0 - smoothstep(rA - aa, rA + aa, dist);
+    float maskB = 1.0 - smoothstep(rB - aa, rB + aa, dist);
+
+    vec3 color = uAura1 * maskA + uAura2 * maskB;
+    float alpha = clamp(maskA + maskB, 0.0, 1.0);
+
+    if (alpha < 0.02) discard;
+    gl_FragColor = vec4(color, alpha);
+  }
+`;
