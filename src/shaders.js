@@ -90,6 +90,7 @@ export const ringPlaneVertexGLSL = /* glsl */ `
 export const ringPlaneFragmentGLSL = /* glsl */ `
   varying vec2 vUv;
 
+  uniform float uTime;
   uniform float uTreble;
   uniform float uAmp;
   uniform float uSharpness;
@@ -111,6 +112,16 @@ export const ringPlaneFragmentGLSL = /* glsl */ `
     return 0.5 + 0.5 * cos(t * PI);
   }
 
+  // Unlike the sphere (deliberately dead-still in silence), the ring gets a
+  // small always-on ripple — three sine waves at incommensurate
+  // frequencies/speeds/phases so it never visibly repeats — like a
+  // symbiote's skin softly crawling rather than a mechanical wobble.
+  float idleWobble(float angle, float time) {
+    return sin(angle * 3.0 + time * 0.6) * 0.5
+      + sin(angle * 5.0 - time * 0.9 + 1.7) * 0.3
+      + sin(angle * 7.0 + time * 1.3 + 4.1) * 0.2;
+  }
+
   void main() {
     // headroom so the bulge can't grow past the plane's own physical edge
     // (UV only spans 0..1) even at max sensitivity + a full bass hit.
@@ -120,20 +131,28 @@ export const ringPlaneFragmentGLSL = /* glsl */ `
 
     // narrower width reads as more distinct separate lobes; still always
     // rounded regardless, so "Nitidez" can no longer create points.
-    float width = mix(0.62, 0.34, clamp(uSharpness / 6.0, 0.0, 1.0));
+    float width = mix(0.7, 0.42, clamp(uSharpness / 6.0, 0.0, 1.0));
 
+    // summed (not max'd) so neighboring bands' bumps blend into each other
+    // where they overlap instead of leaving a seam at whichever point one
+    // bump stops "winning" over the next — reads as one continuous liquid
+    // edge merging together rather than separate scalloped zones.
     float lobes = 0.0;
     for (int i = 0; i < NUM_BANDS; i++) {
       float center = -PI + (float(i) + 0.5) * (TAU / float(NUM_BANDS));
-      lobes = max(lobes, lobeBump(angle, center, width) * uBands[i]);
+      lobes += lobeBump(angle, center, width) * uBands[i];
     }
+    lobes = clamp(lobes, 0.0, 1.3);
 
     // no idle drift: true silence holds a perfectly clean ring, a hit
     // bulges only the zone(s) whose frequency is actually playing.
     float bulge = lobes * uAmp * 0.5;
 
-    float innerR = 0.42;
-    float outerR = 0.6 + bulge + uTreble * uAmp * 0.02;
+    // thinner at rest than the first pass — the tube itself is the
+    // baseline visual weight, bass hits are what add real bulk.
+    float wobble = idleWobble(angle, uTime) * 0.012;
+    float innerR = 0.5;
+    float outerR = 0.58 + wobble + bulge + uTreble * uAmp * 0.02;
 
     float aa = fwidth(dist) * 1.5;
     float outerMask = 1.0 - smoothstep(outerR - aa, outerR + aa, dist);

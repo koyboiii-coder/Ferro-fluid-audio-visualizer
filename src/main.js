@@ -278,6 +278,7 @@ const ringMaterial = new THREE.ShaderMaterial({
   fragmentShader: ringPlaneFragmentGLSL,
   transparent: true,
   uniforms: {
+    uTime: uniforms.uTime,
     uTreble: uniforms.uTreble,
     uAmp: uniforms.uAmp,
     uSharpness: uniforms.uSharpness,
