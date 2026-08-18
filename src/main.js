@@ -26,6 +26,12 @@ const PRESETS = [
   { name: "Océano", a: "#020a0d", b: "#5fd8e8", glow: "#0ea5c4", bg: "#020b0e" },
   { name: "Grafito", a: "#020202", b: "#cfcfd4", glow: "#9aa0aa", bg: "#08080a" },
   { name: "Fuego", a: "#0d0300", b: "#ffb02e", glow: "#ff4d00", bg: "#120800" },
+  { name: "Nébula", a: "#0a0616", b: "#e6b3ff", glow: "#5ce1ff", bg: "#0b0718" },
+  { name: "Cromo puro", a: "#030304", b: "#f2f4f7", glow: "#ffffff", bg: "#050506" },
+  { name: "Coral", a: "#140705", b: "#ffab8a", glow: "#ff7a5c", bg: "#170806" },
+  { name: "Vino", a: "#0d0207", b: "#d94f7a", glow: "#ff2e63", bg: "#100208" },
+  { name: "Malva", a: "#0c070a", b: "#e0b8c9", glow: "#c98aa8", bg: "#0d0709" },
+  { name: "Turquesa", a: "#020c0d", b: "#6bf0e0", glow: "#22e0c8", bg: "#030d0e" },
   // Bright glass/opal look with a pale void — the one deliberate exception
   // to "the void is always dark", requested to match a specific reference.
   // envIntensity/lightBoost push the reflections way up so it reads as
