@@ -296,6 +296,21 @@ bloomPass.separableBlurMaterials.forEach((mat) => {
   mat.needsUpdate = true;
 });
 
+// Default AdditiveBlending uses blendFunc(SRC_ALPHA, ONE) for BOTH the
+// color and alpha channels — so now that the blur fix above gives it a
+// real (small, localized) alpha instead of a hardcoded 1.0, that same
+// alpha was also quietly scaling down the glow's own RGB, making bloom
+// barely visible. Split them apart: RGB blends fully additive (unscaled by
+// alpha, same brightness as before the fix), alpha still accumulates
+// separately so the canvas only gains opacity right where bloom glows.
+bloomPass.blendMaterial.blending = THREE.CustomBlending;
+bloomPass.blendMaterial.blendEquation = THREE.AddEquation;
+bloomPass.blendMaterial.blendSrc = THREE.OneFactor;
+bloomPass.blendMaterial.blendDst = THREE.OneFactor;
+bloomPass.blendMaterial.blendEquationAlpha = THREE.AddEquation;
+bloomPass.blendMaterial.blendSrcAlpha = THREE.OneFactor;
+bloomPass.blendMaterial.blendDstAlpha = THREE.OneFactor;
+
 composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
 
@@ -437,6 +452,10 @@ PRESETS.forEach((preset, i) => {
   dot.className = "lc-dot";
   dot.type = "button";
   dot.title = preset.name;
+  // tinted per preset (peak color as the lit face, glow as the mid
+  // reflection, valley as the shaded rim) so the swatches are actually
+  // distinguishable instead of thirteen identical chrome balls.
+  dot.style.background = `radial-gradient(circle at 35% 30%, ${preset.b}, ${preset.glow} 55%, ${preset.a})`;
   dot.addEventListener("click", () => {
     applyPreset(preset);
     presetDots.forEach((d) => d.classList.remove("is-active"));
