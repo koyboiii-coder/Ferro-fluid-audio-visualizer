@@ -1,0 +1,321 @@
+/* ============================================================
+   LIQUID CHROME — sistema visual
+   Ferrofluid / Music Visualizer
+   Importar una sola vez en el entrypoint.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Space+Grotesk:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap');
+
+:root {
+  /* --- fondo cromo líquido --- */
+  --lc-void:         #0A0B0E;
+  --lc-blob-dark:    #282D35;
+  --lc-blob-mid:     #3C434C;
+  --lc-blob-light:   #4C545F;
+  --lc-blob-falloff: #12151B;
+
+  /* --- iridiscencia: SOLO en screen + blur, alfa <= .32 --- */
+  --lc-iris-1: #FF6EC7;
+  --lc-iris-2: #A56BFF;
+  --lc-iris-3: #5B8BFF;
+  --lc-iris-4: #3FE0D0;
+  --lc-iris-5: #C9FF6B;
+  --lc-iris-6: #FFD36B;
+
+  /* --- vidrio --- */
+  --lc-panel:       rgba(13, 15, 19, .62);
+  --lc-panel-blur:  24px;
+  --lc-surface:     rgba(255, 255, 255, .05);
+  --lc-hairline:    rgba(255, 255, 255, .08);
+  --lc-chrome-edge: linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,.04) 22%, rgba(255,255,255,0));
+  --lc-chrome-fill: linear-gradient(180deg, #DFE6EF, #9AA4B2);
+
+  /* --- texto --- */
+  --lc-text:      #E7EBF1;
+  --lc-text-soft: #C9CFD7;
+  --lc-text-mute: #7A808A;
+  --lc-text-dim:  #5F656D;
+  --lc-accent:    #7FA6D8;
+
+  /* --- visualizador --- */
+  --lc-valley: #06070A;
+  --lc-peak:   #EAF0F7;
+
+  /* --- motion --- */
+  --lc-flow: 1;
+
+  /* --- tipografía --- */
+  --lc-font-display: 'Cinzel', Georgia, serif;
+  --lc-font-ui:      'Space Grotesk', system-ui, sans-serif;
+  --lc-font-mono:    'Space Mono', ui-monospace, monospace;
+}
+
+/* ============================================================
+   1. FONDO ANIMADO
+   ============================================================ */
+
+.lc-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: var(--lc-void);
+  pointer-events: none;
+}
+
+.lc-bg i {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  animation-duration: calc(var(--dur) / var(--lc-flow, 1));
+  animation-iteration-count: infinite;
+}
+
+.lc-bg .b1 {
+  --dur: 19s;
+  top: -20%; left: -15%; width: 72%; height: 82%;
+  background: radial-gradient(circle, var(--lc-blob-mid), var(--lc-blob-falloff) 62%, transparent 78%);
+  filter: blur(55px);
+  animation-name: lc-drift1;
+  animation-timing-function: ease-in-out;
+}
+
+.lc-bg .b2 {
+  --dur: 23s;
+  top: 8%; right: -22%; width: 78%; height: 78%;
+  background: radial-gradient(circle, var(--lc-blob-light), var(--lc-blob-falloff) 60%, transparent 78%);
+  filter: blur(60px);
+  animation-name: lc-drift2;
+  animation-timing-function: ease-in-out;
+}
+
+.lc-bg .b3 {
+  --dur: 21s;
+  bottom: -28%; left: 8%; width: 82%; height: 72%;
+  background: radial-gradient(circle, var(--lc-blob-dark), var(--lc-blob-falloff) 60%, transparent 78%);
+  filter: blur(58px);
+  animation-name: lc-drift3;
+  animation-timing-function: ease-in-out;
+}
+
+.lc-bg .iris {
+  --dur: 34s;
+  top: 18%; left: 22%; width: 60%; height: 60%;
+  border-radius: 45%;
+  background: conic-gradient(from 0deg,
+    rgba(255, 110, 199, .32),
+    rgba(120, 150, 255, .30),
+    rgba(90,  230, 210, .32),
+    rgba(200, 160, 255, .30),
+    rgba(255, 200, 120, .28),
+    rgba(255, 110, 199, .32));
+  filter: blur(52px);
+  mix-blend-mode: screen;
+  opacity: .5;
+  animation-name: lc-sheen;
+  animation-timing-function: linear;
+}
+
+.lc-bg .vig {
+  inset: 0;
+  width: auto; height: auto;
+  border-radius: 0;
+  animation: none;
+  background: radial-gradient(120% 92% at 50% 46%, transparent 38%, var(--lc-vignette, rgba(0, 0, 0, .55)) 100%);
+}
+
+@keyframes lc-drift1 {
+  0%, 100% { transform: translate(-10%, -8%) scale(1.10) rotate(0deg); }
+  50%      { transform: translate(12%, 10%)  scale(1.32) rotate(40deg); }
+}
+@keyframes lc-drift2 {
+  0%, 100% { transform: translate(15%, -5%)  scale(1.20) rotate(0deg); }
+  50%      { transform: translate(-12%, 14%) scale(1.00) rotate(-50deg); }
+}
+@keyframes lc-drift3 {
+  0%, 100% { transform: translate(-5%, 15%)  scale(1.15) rotate(0deg); }
+  50%      { transform: translate(10%, -12%) scale(1.38) rotate(30deg); }
+}
+@keyframes lc-sheen {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-bg i { animation: none; }
+}
+
+/* ============================================================
+   2. CAPAS
+   ============================================================ */
+
+.lc-stage  { position: relative; z-index: 1; }   /* canvas three.js */
+.lc-ui     { position: relative; z-index: 2; }   /* panel de control */
+
+/* ============================================================
+   3. PANEL DE VIDRIO
+   ============================================================ */
+
+.lc-panel-wrap {
+  border-radius: 14px;
+  padding: 1px;                       /* bisel cromo */
+  background: var(--lc-chrome-edge);
+}
+
+.lc-panel {
+  border-radius: 13px;
+  padding: 16px;
+  background: var(--lc-panel);
+  -webkit-backdrop-filter: blur(var(--lc-panel-blur));
+  backdrop-filter: blur(var(--lc-panel-blur));
+  border: 1px solid var(--lc-hairline);
+  font-family: var(--lc-font-ui);
+  color: var(--lc-text-soft);
+}
+
+.lc-panel-title {
+  font-family: var(--lc-font-display);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: .1em;
+  color: var(--lc-text);
+}
+
+.lc-section-label {
+  font-family: var(--lc-font-mono);
+  font-weight: 700;
+  font-size: 9px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--lc-text-dim);
+}
+
+/* ============================================================
+   4. BOTONES
+   ============================================================ */
+
+.lc-btn {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--lc-hairline);
+  background: var(--lc-surface);
+  color: var(--lc-text-soft);
+  font-family: var(--lc-font-ui);
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+  transition: background .18s ease, color .18s ease;
+}
+
+.lc-btn:hover { background: rgba(255, 255, 255, .09); }
+
+.lc-btn.is-active {
+  background: var(--lc-chrome-fill);
+  border-color: transparent;
+  color: #06070A;
+  font-weight: 600;
+}
+
+.lc-btn-row { display: flex; gap: 6px; }
+
+/* ============================================================
+   5. PALETAS (dots)
+   ============================================================ */
+
+.lc-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 7px;
+}
+
+.lc-dot {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  background: radial-gradient(circle at 35% 30%, #fff, #8F9BB0 55%, #2A3040);
+  transition: box-shadow .18s ease, transform .18s ease;
+}
+
+.lc-dot:hover        { transform: scale(1.08); }
+.lc-dot.is-active    { box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .55); }
+
+/* ============================================================
+   6. SLIDERS
+   ============================================================ */
+
+.lc-slider-label {
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--lc-font-mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--lc-text-mute);
+}
+
+.lc-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, .1);
+  outline: none;
+  cursor: pointer;
+}
+
+/* relleno del track: usar background-size desde JS
+   slider.style.backgroundImage = 'linear-gradient(var(--lc-accent),var(--lc-accent))';
+   slider.style.backgroundSize  = pct + '% 100%';                                        */
+.lc-slider {
+  background-image: linear-gradient(var(--lc-accent), var(--lc-accent));
+  background-repeat: no-repeat;
+  background-size: 50% 100%;
+}
+
+.lc-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #fff, #B9C2CE);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .6);
+  cursor: pointer;
+}
+
+.lc-slider::-moz-range-thumb {
+  width: 11px; height: 11px;
+  border: 0;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #fff, #B9C2CE);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .6);
+  cursor: pointer;
+}
+
+/* ============================================================
+   7. MÓVIL — el panel pasa a hoja inferior
+   ============================================================ */
+
+@media (max-width: 720px) {
+  .lc-panel-wrap {
+    position: fixed;
+    left: 12px; right: 12px; bottom: 12px;
+    border-radius: 21px;
+  }
+  .lc-panel {
+    border-radius: 20px;
+    padding: 15px;
+    background: rgba(13, 15, 19, .66);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+  }
+  /* área táctil mínima 44px */
+  .lc-btn { padding: 12px 10px; }
+  .lc-dot { min-width: 28px; }
+  .lc-slider { height: 4px; }
+  .lc-slider::-webkit-slider-thumb { width: 16px; height: 16px; }
+  .lc-slider::-moz-range-thumb     { width: 16px; height: 16px; }
+}

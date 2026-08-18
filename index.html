@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ferrofluid Visualizer</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div class="lc-bg" aria-hidden="true">
+      <i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="iris"></i><i class="vig"></i>
+    </div>
+
+    <div id="electron-titlebar">
+      <span class="titlebar-title">Ferrofluid Visualizer</span>
+      <div class="titlebar-actions">
+        <button id="tb-pin" class="titlebar-btn" title="Siempre encima">📌</button>
+        <button id="tb-min" class="titlebar-btn" title="Minimizar">–</button>
+        <button id="tb-close" class="titlebar-btn close" title="Cerrar (sigue en la bandeja)">×</button>
+      </div>
+    </div>
+
+    <canvas id="scene" class="lc-stage"></canvas>
+
+    <div id="drop-hint">Suelta un archivo de audio aquí, o usa el panel →</div>
+
+    <button id="panel-toggle" title="Mostrar/ocultar controles">⚙</button>
+
+    <div class="lc-panel-wrap lc-ui" id="panel-wrap">
+      <div id="panel" class="lc-panel">
+        <h1 class="lc-panel-title">Ferrofluid Visualizer</h1>
+
+        <section>
+          <label class="lc-section-label">Fuente de audio</label>
+          <div class="lc-btn-row">
+            <button id="btn-file" class="lc-btn">🎵 Archivo</button>
+            <button id="btn-mic" class="lc-btn">🎤 Micrófono</button>
+            <button
+              id="btn-system"
+              class="lc-btn"
+              title='Al elegir qué compartir, marca la casilla &quot;Compartir audio&quot;'
+            >
+              🖥️ Sistema
+            </button>
+          </div>
+          <p class="hint">"Sistema" abre el selector de pantalla/pestaña de Chrome — elige una y marca "Compartir audio".</p>
+          <input type="file" id="file-input" accept="audio/*" hidden />
+          <div class="lc-btn-row" id="playback-row" style="display: none">
+            <button id="btn-playpause" class="lc-btn small">▶</button>
+            <span id="track-name" class="track-name"></span>
+          </div>
+        </section>
+
+        <section>
+          <label class="lc-section-label">Paletas</label>
+          <div class="lc-swatch-grid" id="presets"></div>
+        </section>
+
+        <section>
+          <label class="lc-section-label">Colores</label>
+          <div class="row colors">
+            <label class="color-field">Valle<input type="color" id="colorA" value="#050506" /></label>
+            <label class="color-field">Pico<input type="color" id="colorB" value="#e3e9f0" /></label>
+            <label class="color-field">Acento<input type="color" id="colorGlow" value="#8fd0ff" /></label>
+            <label class="color-field">Fondo<input type="color" id="colorBg" value="#0a0b0e" /></label>
+          </div>
+        </section>
+
+        <section>
+          <label class="lc-section-label">Reactividad</label>
+          <div class="slider-row">
+            <label class="lc-slider-label">Sensibilidad</label>
+            <input type="range" class="lc-slider" id="sensitivity" min="0" max="2" step="0.01" value="1" />
+          </div>
+          <div class="slider-row">
+            <label class="lc-slider-label">Suavizado</label>
+            <input type="range" class="lc-slider" id="smoothing" min="0" max="0.9" step="0.01" value="0.35" />
+          </div>
+          <div class="slider-row">
+            <label class="lc-slider-label">Densidad de picos</label>
+            <input type="range" class="lc-slider" id="complexity" min="2" max="22" step="0.1" value="7.5" />
+          </div>
+          <div class="slider-row">
+            <label class="lc-slider-label">Nitidez</label>
+            <input type="range" class="lc-slider" id="sharpness" min="1" max="8" step="0.1" value="2.4" />
+          </div>
+          <div class="slider-row">
+            <label class="lc-slider-label">Rotación</label>
+            <input type="range" class="lc-slider" id="rotationSpeed" min="0" max="1" step="0.01" value="0.15" />
+          </div>
+          <div class="slider-row">
+            <label class="lc-slider-label">Brillo (bloom)</label>
+            <input type="range" class="lc-slider" id="bloom" min="0" max="2" step="0.01" value="0.15" />
+          </div>
+          <div class="slider-row">
+            <label class="lc-slider-label">Fluidez del fondo</label>
+            <input type="range" class="lc-slider" id="bgFlow" min="0" max="3" step="0.01" value="1.8" />
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

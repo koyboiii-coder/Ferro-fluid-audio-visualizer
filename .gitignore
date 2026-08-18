@@ -1,0 +1,11 @@
+node_modules/
+dist/
+release/
+*.log
+.DS_Store
+
+# original design-brief drop (already incorporated into src/styles/)
+Visualizador audio reactivo cromo/
+Visualizador audio reactivo cromo.zip
+
+.claude/
