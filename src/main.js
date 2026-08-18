@@ -266,6 +266,36 @@ scene.add(accentLight);
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.15, 0.3, 0.8);
+
+// UnrealBloomPass's internal blur shader hardcodes its output alpha to 1.0
+// for every pixel it touches (three.js keeps this simple because its demos
+// always render onto an opaque background). Combined with additive
+// blending back onto the scene, that makes the ENTIRE transparent canvas
+// increasingly opaque as bloom strength rises — visible here as the
+// animated CSS background behind the canvas going dark. Patch the blur
+// shader to carry the real (per-pixel) alpha through instead, so bloom
+// only affects opacity right around where it actually glows.
+bloomPass.separableBlurMaterials.forEach((mat) => {
+  mat.fragmentShader = mat.fragmentShader
+    .replace(
+      "vec3 diffuseSum = texture2D( colorTexture, vUv ).rgb * weightSum;",
+      "vec4 diffuseSum = texture2D( colorTexture, vUv ) * weightSum;"
+    )
+    .replace(
+      "vec3 sample1 = texture2D( colorTexture, vUv + uvOffset ).rgb;",
+      "vec4 sample1 = texture2D( colorTexture, vUv + uvOffset );"
+    )
+    .replace(
+      "vec3 sample2 = texture2D( colorTexture, vUv - uvOffset ).rgb;",
+      "vec4 sample2 = texture2D( colorTexture, vUv - uvOffset );"
+    )
+    .replace(
+      "gl_FragColor = vec4(diffuseSum/weightSum, 1.0);",
+      "gl_FragColor = diffuseSum / weightSum;"
+    );
+  mat.needsUpdate = true;
+});
+
 composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
 

@@ -67,10 +67,10 @@
 .lc-bg .aura {
   top: 50%;
   left: 50%;
-  width: 82vmax;
-  height: 82vmax;
-  margin: -41vmax 0 0 -41vmax;
-  filter: blur(100px);
+  width: 46vmax;
+  height: 46vmax;
+  margin: -23vmax 0 0 -23vmax;
+  filter: blur(36px);
   mix-blend-mode: screen;
   transform: scale(var(--lc-aura-scale, 1));
   opacity: var(--lc-aura-opacity, .4);
@@ -79,11 +79,11 @@
 }
 
 .lc-bg .aura-a {
-  background: radial-gradient(circle at 38% 42%, var(--lc-aura-1), transparent 68%);
+  background: radial-gradient(circle at 38% 42%, var(--lc-aura-1), transparent 46%);
 }
 
 .lc-bg .aura-b {
-  background: radial-gradient(circle at 63% 56%, var(--lc-aura-2), transparent 68%);
+  background: radial-gradient(circle at 63% 56%, var(--lc-aura-2), transparent 46%);
   animation-name: lc-aura-breathe-b;
   animation-duration: 71s;
 }
