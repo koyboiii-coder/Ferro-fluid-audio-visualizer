@@ -94,11 +94,16 @@ export const ringPlaneFragmentGLSL = /* glsl */ `
   uniform float uTreble;
   uniform float uAmp;
   uniform float uSharpness;
-  uniform float uBands[8];
+  // 5 layers x 8 bands, flattened (layer h's band i is at [h*8+i]). Layer 0
+  // is the current signal; each later layer is a slower-chasing lerp of the
+  // one before it (see main.js), so on a hit they peel apart into a trail
+  // of increasingly delayed, fainter echoes instead of moving as one block.
+  uniform float uBandsHistory[40];
   uniform vec3 uColorA;
   uniform vec3 uColorB;
 
   #define NUM_BANDS 8
+  #define NUM_LAYERS 5
   #define TAU 6.28318530718
   #define PI 3.14159265359
 
@@ -133,35 +138,47 @@ export const ringPlaneFragmentGLSL = /* glsl */ `
     // rounded regardless, so "Nitidez" can no longer create points.
     float width = mix(0.7, 0.42, clamp(uSharpness / 6.0, 0.0, 1.0));
 
-    // summed (not max'd) so neighboring bands' bumps blend into each other
-    // where they overlap instead of leaving a seam at whichever point one
-    // bump stops "winning" over the next — reads as one continuous liquid
-    // edge merging together rather than separate scalloped zones.
-    float lobes = 0.0;
-    for (int i = 0; i < NUM_BANDS; i++) {
-      float center = -PI + (float(i) + 0.5) * (TAU / float(NUM_BANDS));
-      lobes += lobeBump(angle, center, width) * uBands[i];
-    }
-    lobes = clamp(lobes, 0.0, 1.3);
-
-    // no idle drift: true silence holds a perfectly clean ring, a hit
-    // bulges only the zone(s) whose frequency is actually playing.
-    float bulge = lobes * uAmp * 0.5;
-
     // thinner at rest than the first pass — the tube itself is the
     // baseline visual weight, bass hits are what add real bulk.
     float wobble = idleWobble(angle, uTime) * 0.012;
     float innerR = 0.5;
-    float outerR = 0.58 + wobble + bulge + uTreble * uAmp * 0.02;
 
     float aa = fwidth(dist) * 1.5;
-    float outerMask = 1.0 - smoothstep(outerR - aa, outerR + aa, dist);
     float innerMask = smoothstep(innerR - aa, innerR + aa, dist);
-    float ring = outerMask * innerMask;
 
-    if (ring < 0.003) discard;
+    // draw oldest/faintest layer first, newest/brightest last, standard
+    // "over" compositing so a hit's most recent edge stays crisp on top
+    // while the layers it's pulling away from fade out behind it.
+    vec3 outColor = vec3(0.0);
+    float outAlpha = 0.0;
 
-    vec3 color = mix(uColorA, uColorB, clamp(lobes * 1.5, 0.0, 1.0));
-    gl_FragColor = vec4(color, ring);
+    for (int h = NUM_LAYERS - 1; h >= 0; h--) {
+      // summed (not max'd) so neighboring bands' bumps blend into each
+      // other where they overlap instead of leaving a seam at whichever
+      // point one band stops "winning" over the next.
+      float lobes = 0.0;
+      for (int i = 0; i < NUM_BANDS; i++) {
+        float center = -PI + (float(i) + 0.5) * (TAU / float(NUM_BANDS));
+        lobes += lobeBump(angle, center, width) * uBandsHistory[h * NUM_BANDS + i];
+      }
+      lobes = clamp(lobes, 0.0, 1.3);
+
+      // no idle drift: true silence holds a perfectly clean ring, a hit
+      // bulges only the zone(s) whose frequency is actually playing.
+      float bulge = lobes * uAmp * 0.5;
+      float outerR = 0.58 + wobble + bulge + uTreble * uAmp * 0.02;
+      float outerMask = 1.0 - smoothstep(outerR - aa, outerR + aa, dist);
+      float ring = outerMask * innerMask;
+
+      float layerFade = pow(0.62, float(h));
+      float alpha = ring * layerFade;
+      vec3 color = mix(uColorA, uColorB, clamp(lobes * 1.5, 0.0, 1.0));
+
+      outColor = mix(outColor, color, alpha);
+      outAlpha = mix(outAlpha, 1.0, alpha);
+    }
+
+    if (outAlpha < 0.003) discard;
+    gl_FragColor = vec4(outColor, outAlpha);
   }
 `;

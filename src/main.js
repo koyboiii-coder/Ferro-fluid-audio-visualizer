@@ -272,6 +272,14 @@ scene.add(blobSphere);
 // into a smaller fraction of this plane (a 2x expansion) so a max-
 // sensitivity bass hit has headroom to bulge outward without clipping
 // against the plane's own UV edge.
+// Trailing echo: layer 0 tracks the current spectrum directly, and each
+// later layer chases the one before it at a slower rate — so on a hit they
+// peel apart into a fading trail of increasingly delayed copies instead of
+// all moving together.
+const RING_TRAIL_LAYERS = 5;
+const RING_TRAIL_CHASE_RATES = [1, 0.3, 0.2, 0.13, 0.08];
+const ringLayerBands = Array.from({ length: RING_TRAIL_LAYERS }, () => new Float32Array(8));
+
 const ringPlaneGeometry = new THREE.PlaneGeometry(6.4, 6.4);
 const ringMaterial = new THREE.ShaderMaterial({
   vertexShader: ringPlaneVertexGLSL,
@@ -282,7 +290,7 @@ const ringMaterial = new THREE.ShaderMaterial({
     uTreble: uniforms.uTreble,
     uAmp: uniforms.uAmp,
     uSharpness: uniforms.uSharpness,
-    uBands: { value: new Float32Array(8) },
+    uBandsHistory: { value: new Float32Array(RING_TRAIL_LAYERS * 8) },
     uColorA: uniforms.uColorA,
     uColorB: uniforms.uColorB,
   },
@@ -609,8 +617,15 @@ function animate() {
   uniforms.uMid.value = bands.mid;
   uniforms.uTreble.value = bands.treble;
 
-  const bandUniform = ringMaterial.uniforms.uBands.value;
-  for (let i = 0; i < audio.spectrum.length; i++) bandUniform[i] = audio.spectrum[i];
+  ringLayerBands[0].set(audio.spectrum);
+  for (let h = 1; h < RING_TRAIL_LAYERS; h++) {
+    const rate = RING_TRAIL_CHASE_RATES[h];
+    const layer = ringLayerBands[h];
+    const chasing = ringLayerBands[h - 1];
+    for (let i = 0; i < layer.length; i++) layer[i] += (chasing[i] - layer[i]) * rate;
+  }
+  const historyUniform = ringMaterial.uniforms.uBandsHistory.value;
+  for (let h = 0; h < RING_TRAIL_LAYERS; h++) historyUniform.set(ringLayerBands[h], h * 8);
 
   // rotation speeds up with bass hits, with real inertia: acceleration from
   // the kick builds up angular velocity, which relaxes back to baseline
