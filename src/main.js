@@ -4,6 +4,7 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { spikeFieldGLSL, ringPlaneVertexGLSL, ringPlaneFragmentGLSL } from "./shaders.js";
 import { AudioEngine } from "./audio.js";
 import "./styles/liquid-chrome.css";
@@ -191,7 +192,7 @@ const uniforms = {
 // given GLSL field (spike cones for the sphere, smooth bulges for the
 // ring) — shared so both shapes get identical shading/color behavior and
 // only differ in their displacement math.
-function createDisplacementMaterial(fieldGLSL) {
+function createDisplacementMaterial(fieldGLSL, materialUniforms = uniforms) {
   const material = new THREE.MeshPhysicalMaterial({
     metalness: 1.0,
     roughness: 0.12,
@@ -201,7 +202,7 @@ function createDisplacementMaterial(fieldGLSL) {
   });
 
   material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, uniforms);
+    Object.assign(shader.uniforms, materialUniforms);
 
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -265,6 +266,41 @@ const sphereMaterial = createDisplacementMaterial(spikeFieldGLSL);
 const blobSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
 scene.add(blobSphere);
 
+// Trailing echoes, same idea as the ring's delayed layers: each echo's
+// uBass/uTreble chases the one before it at a slower rate (echo 0 chases
+// the live signal, echo 2 chases echo 1), so on a hit the spikes don't
+// snap back to flat as one block — they peel off into fainter, slightly
+// lagging ghosts of the same shape. Colors/freq/sharpness/time are shared
+// by reference with the main sphere so an echo only ever differs in how
+// "recent" its bass/treble are.
+const SPHERE_TRAIL_LAYERS = 3;
+const SPHERE_TRAIL_CHASE_RATES = [0.24, 0.14, 0.08];
+const SPHERE_TRAIL_OPACITIES = [0.22, 0.13, 0.07];
+const sphereEchoUniforms = [];
+const blobSphereEchoes = [];
+for (let i = 0; i < SPHERE_TRAIL_LAYERS; i++) {
+  const echoUniforms = {
+    uTime: uniforms.uTime,
+    uBass: { value: 0 },
+    uMid: uniforms.uMid,
+    uTreble: { value: 0 },
+    uAmp: uniforms.uAmp,
+    uFreq: uniforms.uFreq,
+    uSharpness: uniforms.uSharpness,
+    uColorA: uniforms.uColorA,
+    uColorB: uniforms.uColorB,
+  };
+  const echoMaterial = createDisplacementMaterial(spikeFieldGLSL, echoUniforms);
+  echoMaterial.transparent = true;
+  echoMaterial.opacity = SPHERE_TRAIL_OPACITIES[i];
+  echoMaterial.depthWrite = false;
+  const echoMesh = new THREE.Mesh(sphereGeometry, echoMaterial);
+  echoMesh.visible = false;
+  scene.add(echoMesh);
+  sphereEchoUniforms.push(echoUniforms);
+  blobSphereEchoes.push(echoMesh);
+}
+
 // The ring is a flat, camera-facing plane with the shape drawn entirely in
 // its fragment shader (see ringPlaneFragmentGLSL) — a static neon-sign-style
 // outline, not a lit 3D mesh, per the reference: no rotation/perspective,
@@ -307,6 +343,7 @@ function setShape(mesh) {
   activeBlob = mesh;
   blobSphere.visible = mesh === blobSphere;
   blobRing.visible = mesh === blobRing;
+  blobSphereEchoes.forEach((echo) => (echo.visible = mesh === blobSphere));
 }
 
 const shapeSphereBtn = document.getElementById("shape-sphere");
@@ -378,6 +415,38 @@ bloomPass.blendMaterial.blendSrcAlpha = THREE.OneFactor;
 bloomPass.blendMaterial.blendDstAlpha = THREE.OneFactor;
 
 composer.addPass(bloomPass);
+
+// Subtle whole-scene chromatic aberration (radial R/B channel split,
+// strongest toward the edges) to match the liquid-chrome/prismatic look —
+// alpha is taken from the untouched center sample so the transparent
+// background isn't affected by the offset samples.
+const chromaticAberrationPass = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null },
+    uAmount: { value: 0.0016 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uAmount;
+    varying vec2 vUv;
+    void main() {
+      vec2 dir = vUv - 0.5;
+      vec2 offset = dir * uAmount;
+      vec4 center = texture2D(tDiffuse, vUv);
+      float r = texture2D(tDiffuse, vUv - offset).r;
+      float b = texture2D(tDiffuse, vUv + offset).b;
+      gl_FragColor = vec4(r, center.g, b, center.a);
+    }
+  `,
+});
+composer.addPass(chromaticAberrationPass);
 composer.addPass(new OutputPass());
 
 // "Fondo" now drives the liquid-chrome CSS backdrop's base tone (--lc-void)
@@ -653,6 +722,25 @@ function animate() {
 
   const targetScale = 1 + bands.overall * 0.05;
   activeBlob.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.15);
+
+  chromaticAberrationPass.uniforms.uAmount.value = 0.0016 + bands.overall * uniforms.uAmp.value * 0.003;
+
+  if (activeBlob === blobSphere) {
+    let chaseBass = bands.bass;
+    let chaseTreble = bands.treble;
+    for (let i = 0; i < SPHERE_TRAIL_LAYERS; i++) {
+      const rate = SPHERE_TRAIL_CHASE_RATES[i];
+      const eu = sphereEchoUniforms[i];
+      eu.uBass.value += (chaseBass - eu.uBass.value) * rate;
+      eu.uTreble.value += (chaseTreble - eu.uTreble.value) * rate;
+      chaseBass = eu.uBass.value;
+      chaseTreble = eu.uTreble.value;
+
+      const echo = blobSphereEchoes[i];
+      echo.rotation.copy(blobSphere.rotation);
+      echo.scale.copy(blobSphere.scale);
+    }
+  }
 
   // background aura: pulses scale/brightness with bass, never its own
   // animation timing (retiming CSS animations on the fly is what made the
