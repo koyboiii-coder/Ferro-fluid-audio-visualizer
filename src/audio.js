@@ -9,6 +9,14 @@ export class AudioEngine {
 
     this.bands = { bass: 0, mid: 0, treble: 0, overall: 0 };
     this._targets = { bass: 0, mid: 0, treble: 0, overall: 0 };
+
+    // finer-grained spectrum (bass -> treble, log-spaced like the 3-band
+    // split above) for visualizations that map different zones to
+    // different frequencies instead of one overall bass value — e.g. the
+    // ring shape's per-lobe equalizer behavior.
+    this.numBands = 8;
+    this.spectrum = new Float32Array(this.numBands);
+    this._spectrumTargets = new Float32Array(this.numBands);
   }
 
   _ensureContext() {
@@ -119,6 +127,21 @@ export class AudioEngine {
     this.bands.mid += (this._targets.mid - this.bands.mid) * (1 - s);
     this.bands.treble += (this._targets.treble - this.bands.treble) * (1 - s);
     this.bands.overall += (this._targets.overall - this.bands.overall) * (1 - s);
+
+    // squaring the fraction skews bin ranges narrower at the low end and
+    // wider at the high end — matches how bass carries more perceptually
+    // relevant detail per Hz than treble does.
+    const n = this.numBands;
+    for (let i = 0; i < n; i++) {
+      const start = Math.floor(Math.pow(i / n, 2) * len);
+      const end = Math.max(start + 1, Math.floor(Math.pow((i + 1) / n, 2) * len));
+      let sum = 0;
+      for (let j = start; j < end; j++) sum += this.data[j];
+      this._spectrumTargets[i] = sum / (end - start) / 255;
+    }
+    for (let i = 0; i < n; i++) {
+      this.spectrum[i] += (this._spectrumTargets[i] - this.spectrum[i]) * (1 - s);
+    }
 
     return this.bands;
   }

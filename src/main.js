@@ -267,22 +267,21 @@ scene.add(blobSphere);
 // The ring is a flat, camera-facing plane with the shape drawn entirely in
 // its fragment shader (see ringPlaneFragmentGLSL) — a static neon-sign-style
 // outline, not a lit 3D mesh, per the reference: no rotation/perspective,
-// just the outer edge bulging organically with bass.
-// physically larger than it looks: the fragment shader maps its ring shape
-// into a smaller fraction of this plane (see the 1.7x expansion in
-// ringPlaneFragmentGLSL) so a max-sensitivity bass hit has headroom to
-// bulge outward without clipping against the plane's own UV edge.
-const ringPlaneGeometry = new THREE.PlaneGeometry(5.4, 5.4);
+// just the outer edge bulging organically, one zone per frequency band.
+// Physically larger than it looks: the fragment shader maps its ring shape
+// into a smaller fraction of this plane (a 2x expansion) so a max-
+// sensitivity bass hit has headroom to bulge outward without clipping
+// against the plane's own UV edge.
+const ringPlaneGeometry = new THREE.PlaneGeometry(6.4, 6.4);
 const ringMaterial = new THREE.ShaderMaterial({
   vertexShader: ringPlaneVertexGLSL,
   fragmentShader: ringPlaneFragmentGLSL,
   transparent: true,
   uniforms: {
-    uBass: uniforms.uBass,
     uTreble: uniforms.uTreble,
     uAmp: uniforms.uAmp,
-    uFreq: uniforms.uFreq,
     uSharpness: uniforms.uSharpness,
+    uBands: { value: new Float32Array(8) },
     uColorA: uniforms.uColorA,
     uColorB: uniforms.uColorB,
   },
@@ -608,6 +607,9 @@ function animate() {
   uniforms.uBass.value = bands.bass;
   uniforms.uMid.value = bands.mid;
   uniforms.uTreble.value = bands.treble;
+
+  const bandUniform = ringMaterial.uniforms.uBands.value;
+  for (let i = 0; i < audio.spectrum.length; i++) bandUniform[i] = audio.spectrum[i];
 
   // rotation speeds up with bass hits, with real inertia: acceleration from
   // the kick builds up angular velocity, which relaxes back to baseline
