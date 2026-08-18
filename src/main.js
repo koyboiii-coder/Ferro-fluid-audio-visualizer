@@ -184,6 +184,7 @@ const uniforms = {
   uSharpness: { value: 1.6 },
   uColorA: { value: new THREE.Color(PRESETS[0].a) },
   uColorB: { value: new THREE.Color(PRESETS[0].b) },
+  uIrisTint: { value: new THREE.Color(0xffffff) },
 };
 
 // Builds a glossy black-metal material whose surface is displaced by the
@@ -293,6 +294,7 @@ const ringMaterial = new THREE.ShaderMaterial({
     uBandsHistory: { value: new Float32Array(RING_TRAIL_LAYERS * 8) },
     uColorA: uniforms.uColorA,
     uColorB: uniforms.uColorB,
+    uIrisTint: uniforms.uIrisTint,
   },
 });
 const blobRing = new THREE.Mesh(ringPlaneGeometry, ringMaterial);
@@ -478,11 +480,13 @@ const colorA = document.getElementById("colorA");
 const colorB = document.getElementById("colorB");
 const colorGlow = document.getElementById("colorGlow");
 const colorBg = document.getElementById("colorBg");
+const colorIris = document.getElementById("colorIris");
 
 colorA.addEventListener("input", () => uniforms.uColorA.value.set(colorA.value));
 colorB.addEventListener("input", () => uniforms.uColorB.value.set(colorB.value));
 colorGlow.addEventListener("input", () => accentLight.color.set(colorGlow.value));
 colorBg.addEventListener("input", () => setBackground(colorBg.value));
+colorIris.addEventListener("input", () => uniforms.uIrisTint.value.set(colorIris.value));
 
 function applyPreset(preset) {
   colorA.value = preset.a;

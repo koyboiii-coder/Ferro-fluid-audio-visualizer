@@ -101,6 +101,7 @@ export const ringPlaneFragmentGLSL = /* glsl */ `
   uniform float uBandsHistory[40];
   uniform vec3 uColorA;
   uniform vec3 uColorB;
+  uniform vec3 uIrisTint;
 
   #define NUM_BANDS 8
   #define NUM_LAYERS 5
@@ -115,6 +116,13 @@ export const ringPlaneFragmentGLSL = /* glsl */ `
     float d = abs(atan(sin(angle - center), cos(angle - center)));
     float t = clamp(d / width, 0.0, 1.0);
     return 0.5 + 0.5 * cos(t * PI);
+  }
+
+  // cheap HSL-ish hue ramp (h wraps 0..1) for the iridescent sheen below —
+  // no saturation/lightness params needed since it's screen-blended onto
+  // an existing color rather than used standalone.
+  vec3 hue2rgb(float h) {
+    return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
   }
 
   // Unlike the sphere (deliberately dead-still in silence), the ring gets a
@@ -167,15 +175,32 @@ export const ringPlaneFragmentGLSL = /* glsl */ `
       // bulges only the zone(s) whose frequency is actually playing.
       float bulge = lobes * uAmp * 0.5;
       float outerR = 0.58 + wobble + bulge + uTreble * uAmp * 0.02;
-      float outerMask = 1.0 - smoothstep(outerR - aa, outerR + aa, dist);
-      float ring = outerMask * innerMask;
-
       float layerFade = pow(0.62, float(h));
-      float alpha = ring * layerFade;
+
+      // chromatic aberration on the trail: the live edge (h=0) stays
+      // crisp, but each older/fainter echo splits its R/G/B a little
+      // further apart, so the receding trail fringes into color instead
+      // of just fading as a flat-tinted ghost.
+      float aberration = float(h) * 0.007;
+      float maskR = (1.0 - smoothstep(outerR + aberration - aa, outerR + aberration + aa, dist)) * innerMask;
+      float maskG = (1.0 - smoothstep(outerR - aa, outerR + aa, dist)) * innerMask;
+      float maskB = (1.0 - smoothstep(outerR - aberration - aa, outerR - aberration + aa, dist)) * innerMask;
+
       vec3 color = mix(uColorA, uColorB, clamp(lobes * 1.5, 0.0, 1.0));
 
-      outColor = mix(outColor, color, alpha);
-      outAlpha = mix(outAlpha, 1.0, alpha);
+      // liquid-chrome sheen: thin rainbow streaks that only show up along
+      // the curved parts of the bulges (where lobes is changing fastest
+      // across the surface — flat stretches stay plain valley/peak color),
+      // slowly drifting so it reads as light raking across moving liquid
+      // metal rather than a static rainbow decal. Tinted by uIrisTint so
+      // it can be colored from the panel instead of always full-rainbow.
+      float rim = clamp(fwidth(lobes) * 6.0, 0.0, 1.0);
+      float hue = fract(angle / TAU * 2.0 + dist * 0.5 - uTime * 0.04);
+      color += hue2rgb(hue) * uIrisTint * rim * 0.55;
+
+      vec3 chAlpha = vec3(maskR, maskG, maskB) * layerFade;
+      outColor = outColor * (1.0 - chAlpha) + color * chAlpha;
+      outAlpha = max(outAlpha, max(chAlpha.r, max(chAlpha.g, chAlpha.b)));
     }
 
     if (outAlpha < 0.003) discard;
