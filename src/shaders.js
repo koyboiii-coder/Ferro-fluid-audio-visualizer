@@ -67,3 +67,75 @@ export const spikeFieldGLSL = /* glsl */ `
     return primary * bassAmp + secondary * trebleAmp * 0.22;
   }
 `;
+
+// A flat, camera-facing "neon ring" — not a 3D mesh at all, but a signed-
+// distance shape drawn in a fragment shader on a plane, so it stays a
+// static, perfectly flat outline (no rotation, no perspective/lighting
+// artifacts) whose outer edge bulges smoothly outward at a few points
+// around the ring. The inner edge always stays a clean circle, matching
+// how the reference clip's "ears" read as liquid merging onto the outer
+// rim rather than the whole tube swelling.
+export const ringPlaneVertexGLSL = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+export const ringPlaneFragmentGLSL = /* glsl */ `
+  varying vec2 vUv;
+
+  uniform float uBass;
+  uniform float uTreble;
+  uniform float uAmp;
+  uniform float uFreq;
+  uniform float uSharpness;
+  uniform vec3 uColorA;
+  uniform vec3 uColorB;
+
+  // smooth angular bump centered on "center", 0 outside +/-width, 1 at
+  // the center, shaped by "sharpness" (higher = narrower/more rounded peak)
+  float lobeShape(float angle, float center, float width, float sharpness) {
+    float d = abs(atan(sin(angle - center), cos(angle - center)));
+    float t = clamp(1.0 - d / width, 0.0, 1.0);
+    return pow(t, sharpness);
+  }
+
+  void main() {
+    // headroom so the bulge can't grow past the plane's own physical edge
+    // (UV only spans 0..1) even at max sensitivity + a full bass hit.
+    vec2 p = (vUv * 2.0 - 1.0) * 1.7;
+    float angle = atan(p.y, p.x);
+    float dist = length(p);
+
+    float roundness = mix(2.0, 6.0, clamp(uSharpness / 6.0, 0.0, 1.0));
+    // "Densidad de picos" fades extra lobes in/out instead of changing a
+    // loop count (GLSL loop bounds must stay static) — five fixed, unevenly
+    // spaced candidate positions read as organic rather than a neat rosette.
+    float freqT = clamp((uFreq - 2.0) / 20.0, 0.0, 1.0);
+    float lobes = 0.0;
+    lobes += lobeShape(angle, 0.6, 0.95, roundness);
+    lobes += lobeShape(angle, -2.35, 0.85, roundness);
+    lobes += lobeShape(angle, 2.75, 0.7, roundness) * smoothstep(0.1, 0.45, freqT);
+    lobes += lobeShape(angle, -0.95, 0.6, roundness) * smoothstep(0.3, 0.7, freqT);
+    lobes += lobeShape(angle, 1.85, 0.55, roundness) * smoothstep(0.55, 1.0, freqT);
+    lobes = clamp(lobes, 0.0, 1.0);
+
+    // no idle drift: silence holds a perfectly clean ring, a hit bulges it.
+    float bulge = lobes * (uBass * uAmp * 0.42);
+
+    float innerR = 0.42;
+    float outerR = 0.6 + bulge + uTreble * uAmp * 0.02;
+
+    float aa = fwidth(dist) * 1.5;
+    float outerMask = 1.0 - smoothstep(outerR - aa, outerR + aa, dist);
+    float innerMask = smoothstep(innerR - aa, innerR + aa, dist);
+    float ring = outerMask * innerMask;
+
+    if (ring < 0.003) discard;
+
+    vec3 color = mix(uColorA, uColorB, clamp(lobes * 1.5, 0.0, 1.0));
+    gl_FragColor = vec4(color, ring);
+  }
+`;

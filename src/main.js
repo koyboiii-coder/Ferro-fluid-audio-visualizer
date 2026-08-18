@@ -4,7 +4,7 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { spikeFieldGLSL } from "./shaders.js";
+import { spikeFieldGLSL, ringPlaneVertexGLSL, ringPlaneFragmentGLSL } from "./shaders.js";
 import { AudioEngine } from "./audio.js";
 import "./styles/liquid-chrome.css";
 
@@ -186,75 +186,131 @@ const uniforms = {
   uColorB: { value: new THREE.Color(PRESETS[0].b) },
 };
 
-const geometry = new THREE.IcosahedronGeometry(1.05, 7);
+// Builds a glossy black-metal material whose surface is displaced by the
+// given GLSL field (spike cones for the sphere, smooth bulges for the
+// ring) — shared so both shapes get identical shading/color behavior and
+// only differ in their displacement math.
+function createDisplacementMaterial(fieldGLSL) {
+  const material = new THREE.MeshPhysicalMaterial({
+    metalness: 1.0,
+    roughness: 0.12,
+    clearcoat: 0.25,
+    clearcoatRoughness: 0.35,
+    envMapIntensity: 1.0,
+  });
 
-const material = new THREE.MeshPhysicalMaterial({
-  metalness: 1.0,
-  roughness: 0.12,
-  clearcoat: 0.25,
-  clearcoatRoughness: 0.35,
-  envMapIntensity: 1.0,
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+        ${fieldGLSL}
+        varying float vSpikeHeight;`
+      )
+      .replace(
+        "#include <beginnormal_vertex>",
+        `vec3 objectNormal = vec3( normal );
+        #ifdef USE_TANGENT
+        vec3 objectTangent = vec3( tangent.xyz );
+        #endif
+
+        vec3 n0 = normalize(normal);
+        float baseDisp = calcDisplacement(position);
+        vec3 dispPosition = position + n0 * baseDisp;
+        vSpikeHeight = baseDisp;
+
+        vec3 tangentA = normalize(abs(n0.y) < 0.99 ? cross(n0, vec3(0.0, 1.0, 0.0)) : cross(n0, vec3(1.0, 0.0, 0.0)));
+        vec3 tangentB = normalize(cross(n0, tangentA));
+        float epsN = 0.03;
+        vec3 pTA = position + tangentA * epsN;
+        vec3 pTB = position + tangentB * epsN;
+        vec3 dTA = pTA + n0 * calcDisplacement(pTA);
+        vec3 dTB = pTB + n0 * calcDisplacement(pTB);
+        vec3 newNormal = normalize(cross(dTA - dispPosition, dTB - dispPosition));
+        if (dot(newNormal, n0) < 0.0) newNormal = -newNormal;
+        objectNormal = newNormal;`
+      )
+      .replace(
+        "#include <begin_vertex>",
+        `vec3 transformed = dispPosition;
+        #ifdef USE_ALPHAHASH
+        vPosition = vec3( position );
+        #endif`
+      );
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+        uniform vec3 uColorA;
+        uniform vec3 uColorB;
+        varying float vSpikeHeight;`
+      )
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+        float spikeT = clamp(vSpikeHeight * 2.2, 0.0, 1.0);
+        diffuseColor.rgb = mix(uColorA, uColorB, spikeT);`
+      );
+  };
+
+  return material;
+}
+
+const sphereGeometry = new THREE.IcosahedronGeometry(1.05, 7);
+const sphereMaterial = createDisplacementMaterial(spikeFieldGLSL);
+const blobSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+scene.add(blobSphere);
+
+// The ring is a flat, camera-facing plane with the shape drawn entirely in
+// its fragment shader (see ringPlaneFragmentGLSL) — a static neon-sign-style
+// outline, not a lit 3D mesh, per the reference: no rotation/perspective,
+// just the outer edge bulging organically with bass.
+// physically larger than it looks: the fragment shader maps its ring shape
+// into a smaller fraction of this plane (see the 1.7x expansion in
+// ringPlaneFragmentGLSL) so a max-sensitivity bass hit has headroom to
+// bulge outward without clipping against the plane's own UV edge.
+const ringPlaneGeometry = new THREE.PlaneGeometry(5.4, 5.4);
+const ringMaterial = new THREE.ShaderMaterial({
+  vertexShader: ringPlaneVertexGLSL,
+  fragmentShader: ringPlaneFragmentGLSL,
+  transparent: true,
+  uniforms: {
+    uBass: uniforms.uBass,
+    uTreble: uniforms.uTreble,
+    uAmp: uniforms.uAmp,
+    uFreq: uniforms.uFreq,
+    uSharpness: uniforms.uSharpness,
+    uColorA: uniforms.uColorA,
+    uColorB: uniforms.uColorB,
+  },
 });
+const blobRing = new THREE.Mesh(ringPlaneGeometry, ringMaterial);
+blobRing.visible = false;
+scene.add(blobRing);
 
-material.onBeforeCompile = (shader) => {
-  Object.assign(shader.uniforms, uniforms);
+let activeBlob = blobSphere;
 
-  shader.vertexShader = shader.vertexShader
-    .replace(
-      "#include <common>",
-      `#include <common>
-      ${spikeFieldGLSL}
-      varying float vSpikeHeight;`
-    )
-    .replace(
-      "#include <beginnormal_vertex>",
-      `vec3 objectNormal = vec3( normal );
-      #ifdef USE_TANGENT
-      vec3 objectTangent = vec3( tangent.xyz );
-      #endif
+function setShape(mesh) {
+  activeBlob = mesh;
+  blobSphere.visible = mesh === blobSphere;
+  blobRing.visible = mesh === blobRing;
+}
 
-      vec3 n0 = normalize(normal);
-      float baseDisp = calcDisplacement(position);
-      vec3 dispPosition = position + n0 * baseDisp;
-      vSpikeHeight = baseDisp;
-
-      vec3 tangentA = normalize(abs(n0.y) < 0.99 ? cross(n0, vec3(0.0, 1.0, 0.0)) : cross(n0, vec3(1.0, 0.0, 0.0)));
-      vec3 tangentB = normalize(cross(n0, tangentA));
-      float epsN = 0.03;
-      vec3 pTA = position + tangentA * epsN;
-      vec3 pTB = position + tangentB * epsN;
-      vec3 dTA = pTA + n0 * calcDisplacement(pTA);
-      vec3 dTB = pTB + n0 * calcDisplacement(pTB);
-      vec3 newNormal = normalize(cross(dTA - dispPosition, dTB - dispPosition));
-      if (dot(newNormal, n0) < 0.0) newNormal = -newNormal;
-      objectNormal = newNormal;`
-    )
-    .replace(
-      "#include <begin_vertex>",
-      `vec3 transformed = dispPosition;
-      #ifdef USE_ALPHAHASH
-      vPosition = vec3( position );
-      #endif`
-    );
-
-  shader.fragmentShader = shader.fragmentShader
-    .replace(
-      "#include <common>",
-      `#include <common>
-      uniform vec3 uColorA;
-      uniform vec3 uColorB;
-      varying float vSpikeHeight;`
-    )
-    .replace(
-      "#include <color_fragment>",
-      `#include <color_fragment>
-      float spikeT = clamp(vSpikeHeight * 2.2, 0.0, 1.0);
-      diffuseColor.rgb = mix(uColorA, uColorB, spikeT);`
-    );
-};
-
-const blob = new THREE.Mesh(geometry, material);
-scene.add(blob);
+const shapeSphereBtn = document.getElementById("shape-sphere");
+const shapeRingBtn = document.getElementById("shape-ring");
+shapeSphereBtn.addEventListener("click", () => {
+  setShape(blobSphere);
+  shapeSphereBtn.classList.add("is-active");
+  shapeRingBtn.classList.remove("is-active");
+});
+shapeRingBtn.addEventListener("click", () => {
+  setShape(blobRing);
+  shapeRingBtn.classList.add("is-active");
+  shapeSphereBtn.classList.remove("is-active");
+});
 
 // accent light: colored rim/gel light, tinted from the "Acento" color picker —
 // the object's main shape reads from the studio envmap above; this just adds
@@ -434,7 +490,7 @@ function applyPreset(preset) {
   // bright environment + stronger reflection so the object actually reads
   // as pale glass instead of black metal with a light tint.
   scene.environment = preset.brightEnv ? brightEnvRT.texture : studioEnvRT.texture;
-  material.envMapIntensity = preset.envIntensity ?? 1.0;
+  sphereMaterial.envMapIntensity = preset.envIntensity ?? 1.0;
   accentLight.intensity = preset.lightBoost ?? 2.2;
 
   const root = document.documentElement.style;
@@ -563,11 +619,18 @@ function animate() {
   angularVelocity += (baseline - angularVelocity) * dt;
   angularVelocity = THREE.MathUtils.clamp(angularVelocity, 0, 12);
 
-  blob.rotation.y += dt * rSpeed * angularVelocity;
-  blob.rotation.x += dt * rSpeed * angularVelocity * 0.15;
+  // the ring is a flat, camera-facing "neon sign" by design (see
+  // ringPlaneFragmentGLSL) — it stays static instead of tumbling in 3D,
+  // only the sphere spins.
+  if (activeBlob === blobSphere) {
+    activeBlob.rotation.y += dt * rSpeed * angularVelocity;
+    activeBlob.rotation.x += dt * rSpeed * angularVelocity * 0.15;
+  } else {
+    activeBlob.quaternion.copy(camera.quaternion);
+  }
 
   const targetScale = 1 + bands.overall * 0.05;
-  blob.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.15);
+  activeBlob.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.15);
 
   // background aura: pulses scale/brightness with bass, never its own
   // animation timing (retiming CSS animations on the fly is what made the
