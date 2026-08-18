@@ -38,10 +38,58 @@ const PRESETS = [
     brightEnv: true,
     envIntensity: 1.6,
     lightBoost: 3.5,
-    blobs: ["#c7cdd6", "#dadfe6", "#f4f6f9", "#e3e7ec"],
     vignette: "rgba(60, 70, 90, .12)",
   },
 ];
+
+// Derives the background aura's two glow colors from a preset's accent
+// color: the accent itself (boosted to a consistent saturation/lightness so
+// pale accents still read as a glow) plus its complement, so every preset
+// automatically gets a harmonious two-tone aura without per-preset tuning.
+function hexToHsl(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  let h = 0;
+  let s = 0;
+  const d = max - min;
+  if (d !== 0) {
+    s = d / (1 - Math.abs(2 * l - 1));
+    switch (max) {
+      case r: h = ((g - b) / d) % 6; break;
+      case g: h = (b - r) / d + 2; break;
+      default: h = (r - g) / d + 4; break;
+    }
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return [h, s, l];
+}
+
+function hslToHex(h, s, l) {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; b = 0; }
+  else if (h < 120) { r = x; g = c; b = 0; }
+  else if (h < 180) { r = 0; g = c; b = x; }
+  else if (h < 240) { r = 0; g = x; b = c; }
+  else if (h < 300) { r = x; g = 0; b = c; }
+  else { r = c; g = 0; b = x; }
+  const toHex = (v) => Math.round((v + m) * 255).toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function auraPairFromGlow(hex) {
+  const [h, s, l] = hexToHsl(hex);
+  const auraS = Math.max(s, 0.55);
+  const auraL = Math.min(Math.max(l, 0.55), 0.72);
+  return [hslToHex(h, auraS, auraL), hslToHex((h + 180) % 360, auraS, auraL)];
+}
 
 const canvas = document.getElementById("scene");
 const renderer = new THREE.WebGLRenderer({
@@ -225,7 +273,6 @@ composer.addPass(new OutputPass());
 // instead of the WebGL scene's clear color — the canvas is transparent, so
 // that animated backdrop is what's actually visible around the object.
 const lcBg = document.querySelector(".lc-bg");
-const lcIris = lcBg.querySelector(".iris");
 
 function setBackground(hex) {
   document.documentElement.style.setProperty("--lc-void", hex);
@@ -345,17 +392,12 @@ function applyPreset(preset) {
   material.envMapIntensity = preset.envIntensity ?? 1.0;
   accentLight.intensity = preset.lightBoost ?? 2.2;
 
-  // most presets keep the shared dark blob palette; a preset can override
-  // it (and the corner vignette) to match a much brighter backdrop.
   const root = document.documentElement.style;
-  const blobVars = ["--lc-blob-dark", "--lc-blob-mid", "--lc-blob-light", "--lc-blob-falloff"];
-  if (preset.blobs) {
-    blobVars.forEach((v, i) => root.setProperty(v, preset.blobs[i]));
-    root.setProperty("--lc-vignette", preset.vignette ?? "rgba(0, 0, 0, .55)");
-  } else {
-    blobVars.forEach((v) => root.removeProperty(v));
-    root.removeProperty("--lc-vignette");
-  }
+  const [auraA, auraB] = auraPairFromGlow(preset.glow);
+  root.setProperty("--lc-aura-1", auraA);
+  root.setProperty("--lc-aura-2", auraB);
+  if (preset.vignette) root.setProperty("--lc-vignette", preset.vignette);
+  else root.removeProperty("--lc-vignette");
 }
 
 const presetsEl = document.getElementById("presets");
@@ -445,10 +487,10 @@ const clock = new THREE.Clock();
 // music rather than just following it 1:1.
 let angularVelocity = 0.25;
 
-// A separate, slower-lerped bass value just for the background — using the
-// same fast-attack bass that drives the spikes would make the chrome flow
-// flicker/shake (per the design spec, §8).
-let bgBassSmoothed = 0;
+// Background aura level: fast attack (snaps up quickly on a bass hit) but a
+// slow release (fades back down gently), so the glow pulses with the beat
+// instead of flickering or drifting on its own when idle.
+let bgAuraLevel = 0;
 
 function animate() {
   requestAnimationFrame(animate);
@@ -478,12 +520,16 @@ function animate() {
   const targetScale = 1 + bands.overall * 0.05;
   blob.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.15);
 
-  // liquid-chrome backdrop: bass accelerates the flow and intensifies the
-  // iridescent sheen, smoothed separately so it drifts instead of shaking.
-  bgBassSmoothed += (bands.bass - bgBassSmoothed) * 0.1;
-  const flowCeiling = parseFloat(bgFlowSlider.value);
-  lcBg.style.setProperty("--lc-flow", 1 + bgBassSmoothed * flowCeiling);
-  lcIris.style.opacity = 0.35 + bgBassSmoothed * 0.45;
+  // background aura: pulses scale/brightness with bass, never its own
+  // animation timing (retiming CSS animations on the fly is what made the
+  // old flowing background feel jerky/dizzying).
+  const bassNow = bands.bass * uniforms.uAmp.value;
+  bgAuraLevel += (bassNow - bgAuraLevel) * (bassNow > bgAuraLevel ? 0.35 : 0.05);
+  const pulse = parseFloat(bgFlowSlider.value);
+  const auraScale = THREE.MathUtils.clamp(1 + bgAuraLevel * 0.09 * pulse, 1, 1.4);
+  const auraOpacity = THREE.MathUtils.clamp(0.32 + bgAuraLevel * 0.14 * pulse, 0.12, 0.85);
+  lcBg.style.setProperty("--lc-aura-scale", auraScale.toFixed(3));
+  lcBg.style.setProperty("--lc-aura-opacity", auraOpacity.toFixed(3));
 
   controls.update();
   composer.render();

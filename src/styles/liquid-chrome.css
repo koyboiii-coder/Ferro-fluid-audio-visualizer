@@ -7,20 +7,12 @@
 @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Space+Grotesk:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap');
 
 :root {
-  /* --- fondo cromo líquido --- */
-  --lc-void:         #0A0B0E;
-  --lc-blob-dark:    #282D35;
-  --lc-blob-mid:     #3C434C;
-  --lc-blob-light:   #4C545F;
-  --lc-blob-falloff: #12151B;
-
-  /* --- iridiscencia: SOLO en screen + blur, alfa <= .32 --- */
-  --lc-iris-1: #FF6EC7;
-  --lc-iris-2: #A56BFF;
-  --lc-iris-3: #5B8BFF;
-  --lc-iris-4: #3FE0D0;
-  --lc-iris-5: #C9FF6B;
-  --lc-iris-6: #FFD36B;
+  /* --- fondo aura --- */
+  --lc-void: #0A0B0E;
+  --lc-aura-1: #8fd0ff;
+  --lc-aura-2: #ffb98f;
+  --lc-aura-scale: 1;
+  --lc-aura-opacity: .4;
 
   /* --- vidrio --- */
   --lc-panel:       rgba(13, 15, 19, .62);
@@ -41,9 +33,6 @@
   --lc-valley: #06070A;
   --lc-peak:   #EAF0F7;
 
-  /* --- motion --- */
-  --lc-flow: 1;
-
   /* --- tipografía --- */
   --lc-font-display: 'Cinzel', Georgia, serif;
   --lc-font-ui:      'Space Grotesk', system-ui, sans-serif;
@@ -63,85 +52,61 @@
   pointer-events: none;
 }
 
+/* Two soft, off-white-balanced glow blobs (a warm/cool complementary pair,
+   picked per preset in JS) sitting near the center — an "aura" rather than
+   corner-anchored drifting shapes. Idle motion is almost nothing (a slow
+   12s wait shape shift is the entire animation); --lc-aura-scale/-opacity
+   are the only things audio touches, updated smoothly from JS every frame
+   instead of retiming the animation itself, which is what caused the
+   original background to feel jerky/dizzying at any "flow" setting. */
 .lc-bg i {
   position: absolute;
   display: block;
-  border-radius: 50%;
-  animation-duration: calc(var(--dur) / var(--lc-flow, 1));
-  animation-iteration-count: infinite;
 }
 
-.lc-bg .b1 {
-  --dur: 19s;
-  top: -20%; left: -15%; width: 72%; height: 82%;
-  background: radial-gradient(circle, var(--lc-blob-mid), var(--lc-blob-falloff) 62%, transparent 78%);
-  filter: blur(55px);
-  animation-name: lc-drift1;
-  animation-timing-function: ease-in-out;
-}
-
-.lc-bg .b2 {
-  --dur: 23s;
-  top: 8%; right: -22%; width: 78%; height: 78%;
-  background: radial-gradient(circle, var(--lc-blob-light), var(--lc-blob-falloff) 60%, transparent 78%);
-  filter: blur(60px);
-  animation-name: lc-drift2;
-  animation-timing-function: ease-in-out;
-}
-
-.lc-bg .b3 {
-  --dur: 21s;
-  bottom: -28%; left: 8%; width: 82%; height: 72%;
-  background: radial-gradient(circle, var(--lc-blob-dark), var(--lc-blob-falloff) 60%, transparent 78%);
-  filter: blur(58px);
-  animation-name: lc-drift3;
-  animation-timing-function: ease-in-out;
-}
-
-.lc-bg .iris {
-  --dur: 34s;
-  top: 18%; left: 22%; width: 60%; height: 60%;
-  border-radius: 45%;
-  background: conic-gradient(from 0deg,
-    rgba(255, 110, 199, .32),
-    rgba(120, 150, 255, .30),
-    rgba(90,  230, 210, .32),
-    rgba(200, 160, 255, .30),
-    rgba(255, 200, 120, .28),
-    rgba(255, 110, 199, .32));
-  filter: blur(52px);
+.lc-bg .aura {
+  top: 50%;
+  left: 50%;
+  width: 82vmax;
+  height: 82vmax;
+  margin: -41vmax 0 0 -41vmax;
+  filter: blur(100px);
   mix-blend-mode: screen;
-  opacity: .5;
-  animation-name: lc-sheen;
-  animation-timing-function: linear;
+  transform: scale(var(--lc-aura-scale, 1));
+  opacity: var(--lc-aura-opacity, .4);
+  animation: lc-aura-breathe 64s ease-in-out infinite;
+  transition: opacity .4s ease-out;
+}
+
+.lc-bg .aura-a {
+  background: radial-gradient(circle at 38% 42%, var(--lc-aura-1), transparent 68%);
+}
+
+.lc-bg .aura-b {
+  background: radial-gradient(circle at 63% 56%, var(--lc-aura-2), transparent 68%);
+  animation-name: lc-aura-breathe-b;
+  animation-duration: 71s;
 }
 
 .lc-bg .vig {
   inset: 0;
   width: auto; height: auto;
-  border-radius: 0;
-  animation: none;
   background: radial-gradient(120% 92% at 50% 46%, transparent 38%, var(--lc-vignette, rgba(0, 0, 0, .55)) 100%);
 }
 
-@keyframes lc-drift1 {
-  0%, 100% { transform: translate(-10%, -8%) scale(1.10) rotate(0deg); }
-  50%      { transform: translate(12%, 10%)  scale(1.32) rotate(40deg); }
+@keyframes lc-aura-breathe {
+  0%   { border-radius: 42% 58% 63% 37% / 53% 41% 59% 47%; }
+  50%  { border-radius: 57% 43% 40% 60% / 44% 56% 42% 58%; }
+  100% { border-radius: 42% 58% 63% 37% / 53% 41% 59% 47%; }
 }
-@keyframes lc-drift2 {
-  0%, 100% { transform: translate(15%, -5%)  scale(1.20) rotate(0deg); }
-  50%      { transform: translate(-12%, 14%) scale(1.00) rotate(-50deg); }
-}
-@keyframes lc-drift3 {
-  0%, 100% { transform: translate(-5%, 15%)  scale(1.15) rotate(0deg); }
-  50%      { transform: translate(10%, -12%) scale(1.38) rotate(30deg); }
-}
-@keyframes lc-sheen {
-  to { transform: rotate(360deg); }
+@keyframes lc-aura-breathe-b {
+  0%   { border-radius: 58% 42% 39% 61% / 45% 57% 43% 55%; }
+  50%  { border-radius: 41% 59% 62% 38% / 56% 44% 58% 42%; }
+  100% { border-radius: 58% 42% 39% 61% / 45% 57% 43% 55%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lc-bg i { animation: none; }
+  .lc-bg .aura { animation: none; }
 }
 
 /* ============================================================
