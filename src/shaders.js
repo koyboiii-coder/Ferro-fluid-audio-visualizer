@@ -188,13 +188,16 @@ export const ringPlaneFragmentGLSL = /* glsl */ `
 
       vec3 color = mix(uColorA, uColorB, clamp(lobes * 1.5, 0.0, 1.0));
 
-      // liquid-chrome sheen: thin rainbow streaks that only show up along
-      // the curved parts of the bulges (where lobes is changing fastest
-      // across the surface — flat stretches stay plain valley/peak color),
-      // slowly drifting so it reads as light raking across moving liquid
-      // metal rather than a static rainbow decal. Tinted by uIrisTint so
-      // it can be colored from the panel instead of always full-rainbow.
-      float rim = clamp(fwidth(lobes) * 6.0, 0.0, 1.0);
+      // liquid-chrome sheen, tinted by uIrisTint so it can be colored from
+      // the panel instead of always full-rainbow. Two sources so it's never
+      // completely invisible in silence: a constant faint line right along
+      // both edges (like a metal rim catching light) plus a much stronger
+      // boost wherever the bulge shape is actively changing (bass hits),
+      // slowly drifting so it reads as light raking across moving liquid.
+      float edgeDist = min(abs(dist - innerR), abs(dist - outerR));
+      float rimEdge = 1.0 - smoothstep(0.0, 0.035, edgeDist);
+      float rimActivity = clamp(fwidth(lobes) * 6.0, 0.0, 1.0);
+      float rim = clamp(rimEdge * 0.45 + rimActivity, 0.0, 1.0);
       float hue = fract(angle / TAU * 2.0 + dist * 0.5 - uTime * 0.04);
       color += hue2rgb(hue) * uIrisTint * rim * 0.55;
 

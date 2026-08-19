@@ -396,6 +396,26 @@ bgPlane.position.set(0, 0, -16);
 camera.add(bgPlane);
 scene.add(camera);
 
+// "Puntos" (WebGL halftone plane) vs "Difuminado" (the original CSS
+// blurred-blob aura) — both read the same --lc-aura-1/-2/-scale/-opacity
+// reactive values, just render them differently, so only one is ever
+// visible/enabled at a time.
+const lcAuraEls = document.querySelectorAll(".lc-bg .aura");
+const bgDotsBtn = document.getElementById("bg-dots");
+const bgBlurBtn = document.getElementById("bg-blur");
+let backgroundStyle = "dots";
+
+function setBackgroundStyle(style) {
+  backgroundStyle = style;
+  bgPlane.visible = style === "dots";
+  lcAuraEls.forEach((el) => (el.style.display = style === "blur" ? "" : "none"));
+  bgDotsBtn.classList.toggle("is-active", style === "dots");
+  bgBlurBtn.classList.toggle("is-active", style === "blur");
+}
+setBackgroundStyle("dots");
+bgDotsBtn.addEventListener("click", () => setBackgroundStyle("dots"));
+bgBlurBtn.addEventListener("click", () => setBackgroundStyle("blur"));
+
 // accent light: colored rim/gel light, tinted from the "Acento" color picker —
 // the object's main shape reads from the studio envmap above; this just adds
 // a subtle wash of color into the reflections, like a gel over one softbox.
@@ -614,6 +634,8 @@ function applyPreset(preset) {
   const [auraA, auraB] = auraPairFromGlow(preset.glow);
   bgUniforms.uAura1.value.set(auraA);
   bgUniforms.uAura2.value.set(auraB);
+  root.setProperty("--lc-aura-1", auraA);
+  root.setProperty("--lc-aura-2", auraB);
   if (preset.vignette) root.setProperty("--lc-vignette", preset.vignette);
   else root.removeProperty("--lc-vignette");
 }
@@ -784,8 +806,14 @@ function animate() {
   const bassNow = bands.bass * uniforms.uAmp.value;
   bgAuraLevel += (bassNow - bgAuraLevel) * (bassNow > bgAuraLevel ? 0.35 : 0.05);
   const pulse = parseFloat(bgFlowSlider.value);
-  bgUniforms.uAuraScale.value = THREE.MathUtils.clamp(1 + bgAuraLevel * 0.09 * pulse, 1, 1.4);
-  bgUniforms.uAuraOpacity.value = THREE.MathUtils.clamp(0.32 + bgAuraLevel * 0.14 * pulse, 0.12, 0.85);
+  const auraScale = THREE.MathUtils.clamp(1 + bgAuraLevel * 0.09 * pulse, 1, 1.4);
+  const auraOpacity = THREE.MathUtils.clamp(0.32 + bgAuraLevel * 0.14 * pulse, 0.12, 0.85);
+  bgUniforms.uAuraScale.value = auraScale;
+  bgUniforms.uAuraOpacity.value = auraOpacity;
+  if (backgroundStyle === "blur") {
+    document.documentElement.style.setProperty("--lc-aura-scale", auraScale.toFixed(3));
+    document.documentElement.style.setProperty("--lc-aura-opacity", auraOpacity.toFixed(3));
+  }
 
   controls.update();
   composer.render();

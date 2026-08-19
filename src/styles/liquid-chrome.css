@@ -9,6 +9,10 @@
 :root {
   /* --- fondo --- */
   --lc-void: #0A0B0E;
+  --lc-aura-1: #8fd0ff;
+  --lc-aura-2: #ffb98f;
+  --lc-aura-scale: 1;
+  --lc-aura-opacity: .4;
 
   /* --- vidrio --- */
   --lc-panel:       rgba(13, 15, 19, .62);
@@ -48,20 +52,59 @@
   pointer-events: none;
 }
 
-/* The aura glow itself is now drawn in WebGL as a halftone dot field (see
-   bgHalftoneFragmentGLSL in shaders.js) on a plane parented to the camera,
-   layered on top of the transparent canvas — this div is just its solid
-   base color plus the corner vignette showing through the gaps between
-   dots. */
+/* Two background styles share the same reactive uniforms/CSS vars (bass-
+   driven scale/opacity, gentle drift): "Puntos" draws the aura in WebGL as
+   a halftone dot field (see bgHalftoneFragmentGLSL in shaders.js) on a
+   plane parented to the camera; "Difuminado" is this CSS blurred-blob
+   version. main.js toggles which one is visible/enabled — never both. */
 .lc-bg i {
   position: absolute;
   display: block;
+}
+
+.lc-bg .aura {
+  top: 50%;
+  left: 50%;
+  width: 46vmax;
+  height: 46vmax;
+  margin: -23vmax 0 0 -23vmax;
+  filter: blur(36px);
+  mix-blend-mode: screen;
+  transform: scale(var(--lc-aura-scale, 1));
+  opacity: var(--lc-aura-opacity, .4);
+  animation: lc-aura-breathe 64s ease-in-out infinite;
+  transition: opacity .4s ease-out;
+}
+
+.lc-bg .aura-a {
+  background: radial-gradient(circle at 38% 42%, var(--lc-aura-1), transparent 46%);
+}
+
+.lc-bg .aura-b {
+  background: radial-gradient(circle at 63% 56%, var(--lc-aura-2), transparent 46%);
+  animation-name: lc-aura-breathe-b;
+  animation-duration: 71s;
 }
 
 .lc-bg .vig {
   inset: 0;
   width: auto; height: auto;
   background: radial-gradient(120% 92% at 50% 46%, transparent 38%, var(--lc-vignette, rgba(0, 0, 0, .55)) 100%);
+}
+
+@keyframes lc-aura-breathe {
+  0%   { border-radius: 42% 58% 63% 37% / 53% 41% 59% 47%; }
+  50%  { border-radius: 57% 43% 40% 60% / 44% 56% 42% 58%; }
+  100% { border-radius: 42% 58% 63% 37% / 53% 41% 59% 47%; }
+}
+@keyframes lc-aura-breathe-b {
+  0%   { border-radius: 58% 42% 39% 61% / 45% 57% 43% 55%; }
+  50%  { border-radius: 41% 59% 62% 38% / 56% 44% 58% 42%; }
+  100% { border-radius: 58% 42% 39% 61% / 45% 57% 43% 55%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-bg .aura { animation: none; }
 }
 
 /* ============================================================
