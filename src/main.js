@@ -110,6 +110,60 @@ function auraPairFromGlow(hex) {
   return [hslToHex(h, auraS, auraL), hslToHex((h + 180) % 360, auraS, auraL)];
 }
 
+// Now-playing bar ring colors: derived from the active preset, never
+// hardcoded. Outer ring = the preset's peak color (the one that dominates
+// the visualizer at spike/peak moments); inner ring = that same hue rotated
+// 180° — this app's presets are deliberately analogous (valley/peak/glow all
+// close in hue, see PRESETS above), so there's no natural "secondary" color
+// to reuse, and a hue rotation is exactly the documented fallback for
+// monochromatic presets, guaranteeing the two rings stay visually distinct.
+function relativeLuminance(hex) {
+  const lin = (c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  const r = lin(parseInt(hex.slice(1, 3), 16) / 255);
+  const g = lin(parseInt(hex.slice(3, 5), 16) / 255);
+  const b = lin(parseInt(hex.slice(5, 7), 16) / 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(hexA, hexB) {
+  const la = relativeLuminance(hexA);
+  const lb = relativeLuminance(hexB);
+  const [hi, lo] = la > lb ? [la, lb] : [lb, la];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+function updatePlayerAccent(peakHex, bgHex) {
+  const [h, s, l] = hexToHsl(peakHex);
+
+  // Primary (outer ring): the preset's actual peak color, nudged only if it
+  // fails the contrast guardrail against the app's own background — some
+  // presets (e.g. "Ópalo") use a near-white peak color against a near-white
+  // void, which would make the ring nearly invisible otherwise.
+  let accentL = l;
+  let accentHex = peakHex;
+  const bgIsLight = hexToHsl(bgHex)[2] > 0.5;
+  let guard = 0;
+  while (contrastRatio(accentHex, bgHex) < 3 && guard < 20) {
+    accentL = bgIsLight ? Math.max(0, accentL - 0.05) : Math.min(1, accentL + 0.05);
+    accentHex = hslToHex(h, s, accentL);
+    guard++;
+  }
+
+  // Secondary (inner ring): same hue rotated 180°, with a saturation/
+  // lightness floor so pale/near-white presets (very low real saturation —
+  // most of this app's presets are near-black-or-white at the extremes,
+  // see PRESETS above) still read as a genuinely distinct color instead of
+  // "180° away" but visually the same off-white. Mirrors auraPairFromGlow's
+  // saturation floor above for the same underlying reason.
+  const altS = Math.max(s, 0.5);
+  const altL = Math.min(Math.max(l, 0.4), 0.7);
+  const altHex = hslToHex((h + 180) % 360, altS, altL);
+
+  const root = document.documentElement.style;
+  root.setProperty("--player-accent", accentHex);
+  root.setProperty("--player-accent-alt", altHex);
+}
+
 const canvas = document.getElementById("scene");
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -713,10 +767,20 @@ const colorBg = document.getElementById("colorBg");
 const colorIris = document.getElementById("colorIris");
 
 colorA.addEventListener("input", () => uniforms.uColorA.value.set(colorA.value));
-colorB.addEventListener("input", () => uniforms.uColorB.value.set(colorB.value));
+colorB.addEventListener("input", () => {
+  uniforms.uColorB.value.set(colorB.value);
+  updatePlayerAccent(colorB.value, colorBg.value);
+});
 colorGlow.addEventListener("input", () => accentLight.color.set(colorGlow.value));
-colorBg.addEventListener("input", () => setBackground(colorBg.value));
-colorIris.addEventListener("input", () => uniforms.uIrisTint.value.set(colorIris.value));
+colorBg.addEventListener("input", () => {
+  setBackground(colorBg.value);
+  updatePlayerAccent(colorB.value, colorBg.value);
+});
+colorIris.addEventListener("input", () => {
+  uniforms.uIrisTint.value.set(colorIris.value);
+  document.documentElement.style.setProperty("--player-iris", colorIris.value);
+});
+document.documentElement.style.setProperty("--player-iris", colorIris.value);
 
 function applyPreset(preset) {
   colorA.value = preset.a;
@@ -743,6 +807,8 @@ function applyPreset(preset) {
   root.setProperty("--lc-aura-2", auraB);
   if (preset.vignette) root.setProperty("--lc-vignette", preset.vignette);
   else root.removeProperty("--lc-vignette");
+
+  updatePlayerAccent(preset.b, preset.bg);
 }
 
 const presetsEl = document.getElementById("presets");
@@ -845,6 +911,227 @@ if (window.electronAPI?.isElectron) {
       glassToggleBtn.classList.add("is-active");
     }
     glassToggleBtn.addEventListener("click", () => window.electronAPI.toggleGlass());
+  }
+
+  // Now-playing bar ("Doble anillo" — design handoff variant 2a): main.cjs
+  // polls Windows' SMTC (System Media Transport Controls) for a Spotify
+  // session and pushes updates over IPC. The bar stays out of the DOM's
+  // visible flow entirely until a session is actually detected, and
+  // disappears again the moment it isn't.
+  if (window.electronAPI.media) {
+    const mediaBar = document.getElementById("media-bar");
+    const mbArtist = document.getElementById("mb-artist");
+    const mbSource = document.getElementById("mb-source");
+    const mediaTitleWrap = document.getElementById("media-title-wrap");
+    const mediaTitle = document.getElementById("media-title");
+    const mbElapsed = document.getElementById("mb-elapsed");
+    const mbRemaining = document.getElementById("mb-remaining");
+    const ringOuter = document.getElementById("mb-ring-outer");
+    const ringInner = document.getElementById("mb-ring-inner");
+    const ringsEl = document.getElementById("mb-rings");
+    const playPauseBtn = document.getElementById("media-playpause");
+    let lastTitle = null;
+
+    // Real system master volume (not SMTC — it has no volume API, only
+    // transport controls + metadata; see electron/media-session.cjs's Core
+    // Audio / IAudioEndpointVolume bridge). Stays null (ring at rest) until
+    // the first real reading arrives, and is optimistically updated locally
+    // on drag/keyboard before the IPC round-trip to main.cjs confirms it.
+    let volume = null;
+    let draggingVolume = false;
+
+    function renderVolume(level) {
+      volume = Math.max(0, Math.min(1, level));
+      // Set on #mb-rings (a shared ancestor of both the ring and the
+      // thumb dot below it), not ringInner directly — the property is
+      // declared inheriting, so one write here reaches both.
+      ringsEl.style.setProperty("--mb-volume-deg", `${volume * 360}deg`);
+      ringsEl.setAttribute("aria-valuenow", String(Math.round(volume * 100)));
+    }
+
+    // Coalesced on the renderer side too (not just in main.cjs): a fast
+    // drag fires many pointermove events, and only the trailing value
+    // actually needs to reach Spotify.
+    let volumeSendTimer = null;
+    function scheduleSetVolume(level) {
+      clearTimeout(volumeSendTimer);
+      volumeSendTimer = setTimeout(() => window.electronAPI.media.setVolume(level), 100);
+    }
+    function flushSetVolume(level) {
+      clearTimeout(volumeSendTimer);
+      window.electronAPI.media.setVolume(level);
+    }
+
+    function angleFromPointer(clientX, clientY, rect) {
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      // Ring starts at 12 o'clock and advances clockwise (matches the
+      // conic-gradient's `from 0deg`) — atan2 measures from 3 o'clock, so
+      // +90° aligns them.
+      let deg = Math.atan2(clientY - cy, clientX - cx) * (180 / Math.PI) + 90;
+      if (deg < 0) deg += 360;
+      return deg; // 0-360
+    }
+
+    // Tracked as an *unwrapped* cumulative angle during a drag (can go
+    // below 0 or above 360) rather than recomputing a fresh 0-360 angle
+    // each move — the latter made the volume snap back to 0% the moment a
+    // continued drag crossed back over the 12-o'clock seam, instead of
+    // just maxing out at 100% like a real knob.
+    let dragLastAngle = 0;
+    let dragCumulativeDeg = 0;
+
+    ringsEl.addEventListener("pointerdown", (e) => {
+      const rect = ringsEl.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
+      // A generous inner radius is left untouched for the play button
+      // (~35px+ at the default 132px ring size), so a plain click there
+      // still just toggles playback instead of starting a volume drag.
+      if (dist < rect.width * 0.27) return;
+      draggingVolume = true;
+      ringsEl.setPointerCapture(e.pointerId);
+      const angle = angleFromPointer(e.clientX, e.clientY, rect);
+      dragLastAngle = angle;
+      dragCumulativeDeg = angle;
+      const level = Math.max(0, Math.min(360, dragCumulativeDeg)) / 360;
+      renderVolume(level);
+      scheduleSetVolume(level);
+      e.preventDefault();
+    });
+
+    ringsEl.addEventListener("pointermove", (e) => {
+      if (!draggingVolume) return;
+      const angle = angleFromPointer(e.clientX, e.clientY, ringsEl.getBoundingClientRect());
+      let delta = angle - dragLastAngle;
+      if (delta > 180) delta -= 360; // crossed the seam counter-clockwise
+      if (delta < -180) delta += 360; // crossed the seam clockwise
+      dragCumulativeDeg += delta;
+      dragLastAngle = angle;
+      const level = Math.max(0, Math.min(360, dragCumulativeDeg)) / 360;
+      renderVolume(level);
+      scheduleSetVolume(level);
+    });
+
+    function endVolumeDrag() {
+      if (!draggingVolume) return;
+      draggingVolume = false;
+      if (volume != null) flushSetVolume(volume);
+    }
+    ringsEl.addEventListener("pointerup", endVolumeDrag);
+    ringsEl.addEventListener("pointercancel", endVolumeDrag);
+
+    // Keyboard equivalent (README a11y note: arrow keys as a substitute for
+    // the drag interaction) — ↑/→ raise, ↓/← lower, in 5% steps.
+    ringsEl.tabIndex = 0;
+    ringsEl.setAttribute("role", "slider");
+    ringsEl.setAttribute("aria-label", "Volumen");
+    ringsEl.setAttribute("aria-valuemin", "0");
+    ringsEl.setAttribute("aria-valuemax", "100");
+    ringsEl.addEventListener("keydown", (e) => {
+      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
+      e.preventDefault();
+      const delta = e.key === "ArrowUp" || e.key === "ArrowRight" ? 0.05 : -0.05;
+      const level = Math.max(0, Math.min(1, (volume ?? 0) + delta));
+      renderVolume(level);
+      flushSetVolume(level);
+    });
+
+    // Letrero-LED marquee: only scrolls a title that actually doesn't fit
+    // its lane — measured after the real text is in the DOM, since that's
+    // the only reliable way to know if it overflows.
+    function updateMarquee(wrapEl, textEl, text) {
+      wrapEl.classList.remove("marquee-active");
+      textEl.style.removeProperty("--marquee-distance");
+      textEl.style.removeProperty("--marquee-duration");
+      textEl.textContent = text;
+      void textEl.offsetWidth; // force reflow so a restarted animation begins at 0%
+      const overflow = textEl.scrollWidth - wrapEl.clientWidth;
+      if (overflow > 2) {
+        textEl.style.setProperty("--marquee-distance", `-${overflow}px`);
+        textEl.style.setProperty("--marquee-duration", `${Math.max(5, overflow / 25)}s`);
+        wrapEl.classList.add("marquee-active");
+      }
+    }
+
+    function formatTime(totalSeconds) {
+      const s = Math.max(0, Math.floor(totalSeconds));
+      return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    }
+
+    // Progress state + rAF loop: SMTC only reports a position/timestamp
+    // snapshot every poll (~2s), not a continuous feed. The ring is driven
+    // by real elapsed wall-clock time since that snapshot (position +
+    // (now - lastUpdated) while playing) via requestAnimationFrame, rather
+    // than a separate setInterval counting its own seconds — that would
+    // drift out of sync with Spotify's actual position over time.
+    let media = { active: false, status: "Paused", position: 0, duration: 0, lastUpdated: Date.now() };
+    let rafId = null;
+    let lastRenderedSecond = -1;
+
+    function currentPosition() {
+      if (media.status !== "Playing") return media.position;
+      const elapsed = (Date.now() - media.lastUpdated) / 1000;
+      return Math.min(media.duration, media.position + Math.max(0, elapsed));
+    }
+
+    function renderProgress() {
+      const pos = currentPosition();
+      const duration = media.duration || 1;
+      const deg = Math.min(360, (pos / duration) * 360);
+      ringOuter.style.setProperty("--mb-progress-deg", `${deg}deg`);
+
+      const second = Math.floor(pos);
+      if (second !== lastRenderedSecond) {
+        lastRenderedSecond = second;
+        mbElapsed.textContent = formatTime(pos);
+        mbRemaining.textContent = `-${formatTime(media.duration - pos)}`;
+      }
+
+      rafId = media.active && media.status === "Playing" ? requestAnimationFrame(renderProgress) : null;
+    }
+
+    function startProgressLoop() {
+      if (rafId == null) rafId = requestAnimationFrame(renderProgress);
+    }
+
+    window.electronAPI.media.onUpdate((state) => {
+      mediaBar.classList.toggle("visible", !!state.active);
+      if (!state.active) return;
+
+      const title = state.title || "";
+      if (title !== lastTitle) {
+        updateMarquee(mediaTitleWrap, mediaTitle, title);
+        lastTitle = title;
+      }
+      mbArtist.textContent = state.artist || "";
+      mbSource.textContent = state.source ? `Desde ${state.source}` : "";
+
+      // Skip while the user's own drag is in progress — an incoming poll
+      // (esp. the slow ~15s resync) would otherwise yank the ring away
+      // from their pointer mid-gesture.
+      if (typeof state.volume === "number" && !draggingVolume) {
+        renderVolume(state.volume);
+      }
+
+      media = {
+        active: true,
+        status: state.status,
+        position: state.position || 0,
+        duration: state.duration || 0,
+        lastUpdated: state.lastUpdated || Date.now(),
+      };
+      playPauseBtn.classList.toggle("is-playing", media.status === "Playing");
+      renderProgress();
+      if (media.status === "Playing") startProgressLoop();
+    });
+
+    playPauseBtn.addEventListener("click", () => {
+      (media.status === "Playing" ? window.electronAPI.media.pause : window.electronAPI.media.play)();
+    });
+    document.getElementById("media-prev").addEventListener("click", () => window.electronAPI.media.previous());
+    document.getElementById("media-next").addEventListener("click", () => window.electronAPI.media.next());
   }
 }
 

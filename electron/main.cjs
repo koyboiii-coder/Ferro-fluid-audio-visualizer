@@ -1,6 +1,14 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, session, desktopCapturer, nativeImage } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const {
+  sendMediaCommand,
+  startMediaPolling,
+  pollVolume,
+  setMediaVolume,
+  stopVolumeProcess,
+  stopMediaProcess,
+} = require("./media-session.cjs");
 
 // Temporary diagnostic log (not shipped logic, just visibility into the
 // "Sistema" audio capture failing after the Electron 33->43 upgrade, which
@@ -21,6 +29,8 @@ let tray = null;
 let alwaysOnTop = true;
 let isQuitting = false;
 let glassMode = false;
+let lastMediaState = { active: false };
+let cachedVolume = null;
 
 const iconPath = path.join(__dirname, "icon.png");
 
@@ -76,6 +86,11 @@ function createWindow(bounds) {
     platform: process.platform,
     backgroundColor: mainWindow.getBackgroundColor(),
   });
+  // Glass-mode toggle recreates the whole window/page, so re-push whatever
+  // now-playing state is already known instead of leaving the fresh page
+  // waiting on the next poll tick to notice a change (which may not come
+  // for a while if the same track just keeps playing).
+  mainWindow.webContents.on("did-finish-load", () => mainWindow.webContents.send("media:update", lastMediaState));
   mainWindow.webContents.on("render-process-gone", (_e, details) => debugLog("render-process-gone", details));
   mainWindow.on("unresponsive", () => debugLog("window unresponsive"));
   mainWindow.once("ready-to-show", () => {
@@ -193,11 +208,42 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
 
+  // Now-playing bar: polls Windows' SMTC (System Media Transport Controls)
+  // and pushes updates to whichever window currently exists (mainWindow is
+  // reassigned wholesale on glass-mode toggle, so this closure always reads
+  // the live reference rather than a stale one captured at startup).
+  //
+  // System master volume rides along in the same payload, but is only
+  // actually re-read from Core Audio every ~15s (not every SMTC tick):
+  // unlike the WinRT calls above, reading it compiles a small C# helper via
+  // Add-Type on each call, which is real overhead to pay every 2s
+  // indefinitely while Spotify is open. The ring's own drag/keyboard
+  // interaction already updates this value immediately when the user
+  // changes it — the periodic read is only a slow safety-net resync for
+  // volume changed elsewhere (keyboard media keys, the system tray, etc.).
+  let lastVolumeFetch = 0;
+  startMediaPolling((state) => {
+    lastMediaState = { ...state, volume: cachedVolume };
+    mainWindow?.webContents.send("media:update", lastMediaState);
+    if (state.active && Date.now() - lastVolumeFetch > 15000) {
+      lastVolumeFetch = Date.now();
+      pollVolume()
+        .then((volume) => {
+          cachedVolume = volume;
+          lastMediaState = { ...lastMediaState, volume };
+          mainWindow?.webContents.send("media:update", lastMediaState);
+        })
+        .catch((err) => debugLog("pollVolume failed", err.message));
+    }
+  });
+
   app.on("activate", showWindow);
 });
 
 app.on("before-quit", () => {
   isQuitting = true;
+  stopVolumeProcess();
+  stopMediaProcess();
 });
 
 app.on("window-all-closed", () => {
@@ -217,3 +263,21 @@ ipcMain.handle("window:toggle-always-on-top", () => {
 // this returns. The fresh page reflects the new state itself once loaded
 // (see syncGlassClassToRenderer).
 ipcMain.on("window:toggle-glass", () => setGlassMode(!glassMode));
+
+for (const action of ["play", "pause", "next", "previous"]) {
+  ipcMain.on(`media:${action}`, () => {
+    sendMediaCommand(action).catch((err) => debugLog(`media:${action} failed`, err.message));
+  });
+}
+
+ipcMain.on("media:set-volume", (_event, level) => {
+  if (typeof level !== "number" || !Number.isFinite(level)) return;
+  setMediaVolume(level)
+    .then((confirmed) => {
+      if (confirmed == null) return;
+      cachedVolume = confirmed;
+      lastMediaState = { ...lastMediaState, volume: confirmed };
+      mainWindow?.webContents.send("media:update", lastMediaState);
+    })
+    .catch((err) => debugLog("media:set-volume failed", err.message));
+});

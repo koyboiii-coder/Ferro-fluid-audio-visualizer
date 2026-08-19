@@ -16,4 +16,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // fire-and-forget: toggling recreates the window (and this page with it),
   // so there's no response to wait for — see main.cjs's setGlassMode.
   toggleGlass: () => ipcRenderer.send("window:toggle-glass"),
+  media: {
+    onUpdate: (callback) => {
+      const listener = (_event, state) => callback(state);
+      ipcRenderer.on("media:update", listener);
+      return () => ipcRenderer.removeListener("media:update", listener);
+    },
+    play: () => ipcRenderer.send("media:play"),
+    pause: () => ipcRenderer.send("media:pause"),
+    next: () => ipcRenderer.send("media:next"),
+    previous: () => ipcRenderer.send("media:previous"),
+    setVolume: (level) => ipcRenderer.send("media:set-volume", level),
+  },
 });

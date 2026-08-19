@@ -14,6 +14,9 @@
   <img src="docs/screenshot-sphere.png" alt="Nikkiro Audio Visualizer 3D chrome sphere audio visualizer reacting to bass with spiky metallic deformation" width="49%" />
   <img src="docs/screenshot-ring.png" alt="Nikkiro Audio Visualizer neon liquid ring shape audio visualizer with halftone dot background" width="49%" />
 </p>
+<p>
+  <img src="docs/screenshot-media-bar.png" alt="Nikkiro Audio Visualizer desktop widget with a Spotify now-playing bar showing play, pause, next, previous and the current track and artist" width="49%" />
+</p>
 
 ## Contents
 
@@ -37,6 +40,7 @@ Nikkiro Audio Visualizer isn't just one shape or one look — it's a small toolk
 - **Two background styles**: an animated halftone dot-grid or a soft blurred aura — both react to bass with the same underlying reactive uniforms.
 - **22 curated color presets** — including a few pale/pearl presets with an inverted white valley instead of the usual dark one — plus full manual control over 5 color fields (valley, peak, accent, background, iris), each preset keeping its hues analogous so the material always reads as one coherent metal or glass.
 - **Desktop widget mode (Windows/Electron)**: a frameless, always-on-top window with a system tray icon, automatic system-audio capture with no picker dialog, and an optional **frosted/acrylic glass window** that lets your desktop show through, blurred, behind the whole app.
+- **Spotify now-playing bar (Windows/Electron)**: when Spotify is open, a small bar appears with play/pause, next, previous and the current track/artist — driven by Windows' native System Media Transport Controls, so it needs no Spotify login, API key, or Premium account. It shows up automatically while something is playing and disappears when it isn't.
 
 ## Tech stack
 
@@ -90,6 +94,7 @@ with a symlink-permission error.
 | Material (esfera) | Sphere-only: Metal (opaque liquid metal) or Cristal (transparent glass) |
 | Fondo | Puntos (halftone dot grid) or Difuminado (blurred aura) background style |
 | Ventana | Electron only: toggle the frosted/acrylic glass window effect |
+| Now-playing bar | Electron only: appears automatically when Spotify is open, with play/pause, next, previous and the current track/artist |
 | Paletas | 22 preset color combinations |
 | Colores | Valle (valley), Pico (peak), Acento (accent light), Fondo (background), Iris (iridescent rim tint) |
 | Sensibilidad | Overall audio reactivity multiplier |
@@ -111,6 +116,7 @@ src/audio.js                  Web Audio analyser (file / mic / system capture, 3
 src/style.css                 app-specific styles (panel layout, title bar, etc.)
 src/styles/liquid-chrome.css  the "Liquid Chrome" background/UI design system
 electron/main.cjs             Electron main process (window, tray, glass mode, system-audio handler)
+electron/media-session.cjs    Windows SMTC bridge for the Spotify now-playing bar (poll + play/pause/next/prev)
 electron/preload.cjs          contextBridge API exposed to the renderer
 electron/generate-icons.cjs   generates the app icon (pure Node, no dependencies)
 ```

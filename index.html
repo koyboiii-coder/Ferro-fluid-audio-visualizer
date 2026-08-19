@@ -27,6 +27,48 @@
 
     <canvas id="scene" class="lc-stage"></canvas>
 
+    <div id="media-bar">
+      <div class="mb-artist" id="mb-artist"></div>
+
+      <div class="mb-rings" id="mb-rings">
+        <div class="mb-ring-outer" id="mb-ring-outer">
+          <div class="mb-ring-gap">
+            <div class="mb-ring-inner" id="mb-ring-inner">
+              <button id="media-playpause" class="mb-play" aria-label="Reproducir/Pausar">
+                <span class="mb-icon-pause" aria-hidden="true"></span>
+                <span class="mb-icon-play" aria-hidden="true"></span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="mb-volume-thumb" id="mb-volume-thumb" aria-hidden="true"></div>
+      </div>
+
+      <div class="mb-text">
+        <div class="media-title-wrap" id="media-title-wrap"><span id="media-title" class="mb-title"></span></div>
+        <div class="mb-times">
+          <span id="mb-elapsed" class="mb-elapsed"></span>
+          <span class="mb-divider" aria-hidden="true"></span>
+          <span id="mb-remaining" class="mb-remaining"></span>
+        </div>
+        <div class="mb-nav">
+          <button id="media-prev" class="mb-navbtn" aria-label="Anterior">
+            <svg viewBox="0 0 24 24" width="24" height="24">
+              <rect x="5" y="5" width="2" height="14" fill="currentColor" />
+              <polygon points="19,5 19,19 8,12" fill="currentColor" />
+            </svg>
+          </button>
+          <button id="media-next" class="mb-navbtn" aria-label="Siguiente">
+            <svg viewBox="0 0 24 24" width="24" height="24">
+              <polygon points="5,5 5,19 16,12" fill="currentColor" />
+              <rect x="17" y="5" width="2" height="14" fill="currentColor" />
+            </svg>
+          </button>
+          <span class="mb-source" id="mb-source"></span>
+        </div>
+      </div>
+    </div>
+
     <div id="drop-hint">Suelta un archivo de audio aquí, o usa el panel →</div>
 
     <button id="panel-toggle" title="Mostrar/ocultar controles">⚙</button>

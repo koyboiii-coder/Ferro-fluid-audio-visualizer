@@ -45,7 +45,10 @@ body.electron-app #electron-titlebar {
 
 /* A floating desktop widget reads cleaner with its chrome tucked away by
    default — the titlebar controls and settings gear fade in only while the
-   mouse is actually over the window, instead of sitting there permanently. */
+   mouse is actually over the window, instead of sitting there permanently.
+   The now-playing bar is deliberately NOT part of this group: it should
+   stay put for as long as something is actually playing, and only vanish
+   (via its own .visible class) once nothing is. */
 body.electron-app #electron-titlebar,
 body.electron-app #panel-toggle {
   opacity: 0;
@@ -134,7 +137,10 @@ body.playing #drop-hint {
   position: fixed;
   top: 16px;
   right: 16px;
-  z-index: 20;
+  /* Above #panel-wrap (26) — they share the same top-right corner, and the
+     toggle button has to stay clickable on top of the open panel itself,
+     otherwise there's no way to close it back. */
+  z-index: 27;
   width: 38px;
   height: 38px;
   border-radius: 10px;
@@ -151,7 +157,10 @@ body.playing #drop-hint {
   position: fixed;
   top: 16px;
   right: 16px;
-  z-index: 10;
+  /* Above the now-playing bar (z-index 25) — the panel holds interactive
+     controls (color pickers, sliders) that need to actually be clickable,
+     not sit behind the bar's ring/text when the two visually overlap. */
+  z-index: 26;
   /* 260px left the 3-button "Fuente de audio"/"Forma"/"Material"/"Fondo" rows
      tighter than their own min-width, so they visibly crowded/overlapped. */
   width: 300px;
@@ -257,4 +266,340 @@ body.playing #drop-hint {
 #panel::-webkit-scrollbar-thumb {
   background: var(--lc-hairline);
   border-radius: 3px;
+}
+
+/* Now-playing bar — "Doble anillo" (design handoff variant 2a): a play
+   button ringed by a progress ring (outer) and a volume ring (inner),
+   artist in a vertical label, title + times + prev/next to the right. Only
+   exists in the DOM's visible flow once Electron's main process reports an
+   active SMTC session (e.g. Spotify open) — hidden entirely the rest of the
+   time, not just faded, so it never reserves space or hints at a feature
+   that isn't active. No background/border/shadow of its own: it floats
+   directly over the visualizer, per spec. */
+@property --mb-progress-deg {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --mb-volume-deg {
+  syntax: "<angle>";
+  /* Inheriting (unlike --mb-progress-deg) so the same value set once on
+     #mb-rings reaches both the inner ring's gradient and the thumb dot
+     that marks its position — they're siblings, not nested. */
+  inherits: true;
+  initial-value: 0deg;
+}
+#media-bar {
+  display: none;
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 25;
+  align-items: center;
+  gap: 30px;
+  --mb-ring-size: 132px;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+#media-bar.visible {
+  display: flex;
+}
+
+.mb-artist {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 20px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: #6a6a72;
+  height: var(--mb-ring-size);
+  /* Wraps instead of truncating with an ellipsis — in vertical-rl a
+     wrapped "line" adds width (a second column of text), not height, so a
+     long artist name gets more columns next to the first instead of being
+     cut off. Breaks only at spaces (default word-break), not mid-word.
+     No overflow:hidden here on purpose: Chromium's shrink-to-fit width for
+     wrapped vertical-rl text under-computes (confirmed directly — a name
+     needing 2 columns still measures ~30% taller than the box, even though
+     the browser DID lay it out in 2 columns) — hiding overflow on that
+     under-measured box was what actually clipped real names. Letting the
+     small residual height spill past this box's own edge costs nothing:
+     nothing else sits below #mb-artist in this row. */
+  display: block;
+}
+
+.mb-rings {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--mb-ring-size);
+  height: var(--mb-ring-size);
+  border-radius: 50%;
+  cursor: grab;
+}
+
+.mb-rings:active {
+  cursor: grabbing;
+}
+
+.mb-rings:focus-visible {
+  outline: 2px solid var(--player-accent, #ff9a55);
+  outline-offset: 3px;
+}
+
+/* Marks exactly where the volume ring's fill currently ends — the fill
+   itself is a thin 3px arc that's hard to pin down at a glance, especially
+   with a pale preset color. Positioned via rotate()+translateY() around the
+   ring's own center, at the same radius as the inner ring's visible band,
+   so it always sits right on top of the arc's leading edge. */
+.mb-volume-thumb {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border-radius: 50%;
+  background: #f4f2ef;
+  box-shadow: 0 0 0 2px #0c0c0f, 0 1px 3px rgba(0, 0, 0, 0.4);
+  transform: rotate(var(--mb-volume-deg, 0deg)) translateY(calc(-1 * (var(--mb-ring-size) / 2 - 15.5px)));
+  pointer-events: none;
+}
+
+.mb-ring-outer,
+.mb-ring-gap,
+.mb-ring-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.mb-ring-outer {
+  padding: 3px;
+  background: conic-gradient(
+    from 0deg,
+    var(--player-accent, #ff9a55) 0deg,
+    var(--mb-progress-deg, 0deg),
+    rgba(255, 255, 255, 0.1) var(--mb-progress-deg, 0deg),
+    rgba(255, 255, 255, 0.1) 360deg
+  );
+}
+
+.mb-ring-gap {
+  background: var(--lc-void, #08080a);
+  padding: 11px;
+}
+
+.mb-ring-inner {
+  padding: 3px;
+  background: conic-gradient(
+    from 0deg,
+    var(--player-accent-alt, rgba(77, 124, 255, 0.85)) 0deg,
+    var(--mb-volume-deg, 0deg),
+    rgba(255, 255, 255, 0.07) var(--mb-volume-deg, 0deg),
+    rgba(255, 255, 255, 0.07) 360deg
+  );
+}
+
+.mb-play {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: none;
+  background: #0c0c0f;
+  color: #f4f2ef;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mb-play:hover {
+  background: #16161c;
+}
+
+/* display:inline-block on both — plain <span>s ignore width/height, which
+   would collapse the pause icon's two bars to zero gap apart. */
+.mb-icon-pause {
+  display: none;
+  width: 11px;
+  height: 15px;
+  border-left: 3.5px solid currentColor;
+  border-right: 3.5px solid currentColor;
+}
+
+.mb-icon-play {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 14px solid currentColor;
+  border-top: 9px solid transparent;
+  border-bottom: 9px solid transparent;
+  margin-left: 4px;
+}
+
+/* Shows the icon for the action a click will perform: pause bars while
+   actually playing, a play triangle while paused/stopped. */
+.mb-play.is-playing .mb-icon-pause {
+  display: inline-block;
+}
+.mb-play.is-playing .mb-icon-play {
+  display: none;
+}
+
+.mb-text {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.media-title-wrap {
+  overflow: hidden;
+  white-space: nowrap;
+  /* Fixed width (not max-width): short titles used to shrink this box down
+     to their own content size, which resized the whole bar every time the
+     track changed. This keeps the bar's footprint constant regardless of
+     title length — short titles just leave empty space, long ones marquee
+     inside the same fixed lane. */
+  width: min(480px, 45vw);
+  /* The glow below needs room to fade out before hitting this box's edge —
+     without it, overflow:hidden (required for the marquee) clips the blur
+     flat, which is what reads as a hard-edged rectangle behind the text. */
+  padding: 16px 0;
+  margin: -16px 0;
+}
+
+.mb-title {
+  display: inline-block;
+  white-space: nowrap;
+  font-size: 44px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1;
+  color: #f4f2ef;
+  /* Recreates the 3D ring's Fresnel "Iris" rim for flat text: a thin
+     accent-colored edge right at the glyph silhouette, white everywhere
+     else — not a broad halo. The stroke is painted first and the white
+     fill on top of it, so only the rim (where the stroke pokes out past
+     the fill) actually shows color; the letter body stays solid white. */
+  -webkit-text-stroke: 1.5px color-mix(in srgb, var(--player-accent, #ff9a55) 70%, var(--player-iris, #fff) 30%);
+  paint-order: stroke fill;
+  text-shadow: 0 0 4px color-mix(in srgb, var(--player-accent, #ff9a55) 65%, var(--player-iris, #fff) 35%);
+}
+
+/* Motion trail: only shows up while the marquee is actually scrolling
+   (README: letrero-LED ticker) — a soft streak trailing behind the text as
+   it moves, the same idea as the 3D ring's fading trail when it deforms,
+   rather than a color animation that runs all the time regardless of
+   motion. Offset toward +X because the scroll itself moves left (negative
+   translateX), so the glow lags behind to the right of where each letter
+   currently is. */
+.media-title-wrap.marquee-active .mb-title {
+  text-shadow: 6px 0 5px color-mix(in srgb, var(--player-accent, #ff9a55) 45%, transparent),
+    14px 0 10px color-mix(in srgb, var(--player-accent, #ff9a55) 28%, transparent),
+    24px 0 18px color-mix(in srgb, var(--player-accent, #ff9a55) 14%, transparent);
+}
+
+.mb-times {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 16px;
+  letter-spacing: 0.1em;
+}
+
+.mb-elapsed {
+  color: var(--player-accent, #ff9a55);
+  font-variant-numeric: tabular-nums;
+}
+
+.mb-remaining {
+  color: #6a6a72;
+  font-variant-numeric: tabular-nums;
+}
+
+.mb-divider {
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  min-width: 120px;
+}
+
+.mb-nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.mb-source {
+  margin-left: auto;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #6a6a72;
+  white-space: nowrap;
+}
+
+.mb-navbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 52px;
+  padding: 0 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: none;
+  color: #9a9aa2;
+  cursor: pointer;
+}
+
+.mb-navbtn:hover {
+  color: #f4f2ef;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+/* Letrero-LED style ticker: only turned on (via JS adding this class once it
+   measures real overflow) for titles that don't fit their lane, so short
+   ones stay put instead of jittering. */
+.media-title-wrap.marquee-active .mb-title {
+  animation: media-marquee var(--marquee-duration, 8s) linear infinite;
+}
+
+@keyframes media-marquee {
+  0%,
+  10% {
+    transform: translateX(0);
+  }
+  90%,
+  100% {
+    transform: translateX(var(--marquee-distance, 0));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .media-title-wrap.marquee-active .mb-title {
+    animation: none;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+}
+
+/* Responsive per spec: below ~520px, drop the vertical artist label and
+   shrink the title; the ring unit steps down to 104px keeping the same
+   3px/11px/3px padding rhythm. */
+@media (max-width: 520px) {
+  #media-bar {
+    --mb-ring-size: 104px;
+    gap: 20px;
+  }
+  .mb-artist {
+    display: none;
+  }
+  .mb-title {
+    font-size: 32px;
+  }
 }
