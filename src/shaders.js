@@ -10,6 +10,38 @@ export const spikeFieldGLSL = /* glsl */ `
   uniform float uAmp;
   uniform float uFreq;
   uniform float uSharpness;
+  // 8 frequency bands (bass -> treble, see AudioEngine.spectrum), same data
+  // the ring's circular equalizer uses. Mapped onto longitude around the Y
+  // axis so different wedges of the sphere bulge for different tones,
+  // instead of the whole surface swelling together on one global uBass.
+  uniform float uSpectrum[8];
+
+  #define SPK_NUM_BANDS 8
+  #define SPK_TAU 6.28318530718
+  #define SPK_PI 3.14159265359
+
+  // smooth (cosine) angular falloff around a band's center, wide enough to
+  // overlap its neighbors so zones blend into each other rather than
+  // showing a hard seam where one band's dominance ends.
+  float spkBandWeight(float angle, int i) {
+    float center = -SPK_PI + (float(i) + 0.5) * (SPK_TAU / float(SPK_NUM_BANDS));
+    float d = abs(atan(sin(angle - center), cos(angle - center)));
+    float width = (SPK_TAU / float(SPK_NUM_BANDS)) * 0.75;
+    float t = clamp(d / width, 0.0, 1.0);
+    return 0.5 + 0.5 * cos(t * SPK_PI);
+  }
+
+  float spkZoneAmp(vec3 p) {
+    float angle = atan(p.z, p.x);
+    float amp = 0.0;
+    float wsum = 0.0;
+    for (int i = 0; i < SPK_NUM_BANDS; i++) {
+      float w = spkBandWeight(angle, i);
+      amp += w * uSpectrum[i];
+      wsum += w;
+    }
+    return amp / max(wsum, 0.0001);
+  }
 
   vec3 hash3(vec3 p) {
     p = vec3(
@@ -61,7 +93,11 @@ export const spikeFieldGLSL = /* glsl */ `
     float primary = spikeCone(pd, uFreq, uSharpness);
     float secondary = spikeCone(pd * 2.4 + 17.0, uFreq * 2.6, max(uSharpness * 0.7, 1.0));
 
-    float bassAmp = 0.045 + uBass * uAmp * 1.7;
+    // primary spikes: each longitudinal zone answers to its own frequency
+    // band instead of one shared bass level, so low/mid/high tones visibly
+    // rise in different places around the sphere.
+    float zone = spkZoneAmp(pd);
+    float bassAmp = 0.045 + zone * uAmp * 1.7;
     float trebleAmp = 0.015 + uTreble * uAmp * 0.65;
 
     return primary * bassAmp + secondary * trebleAmp * 0.22;

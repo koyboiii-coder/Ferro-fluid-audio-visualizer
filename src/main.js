@@ -195,6 +195,7 @@ const uniforms = {
   uAmp: { value: 1.0 },
   uFreq: { value: 7.5 },
   uSharpness: { value: 1.6 },
+  uSpectrum: { value: new Float32Array(8) },
   uColorA: { value: new THREE.Color(PRESETS[0].a) },
   uColorB: { value: new THREE.Color(PRESETS[0].b) },
   uIrisTint: { value: new THREE.Color(0xffffff) },
@@ -299,6 +300,7 @@ for (let i = 0; i < SPHERE_TRAIL_LAYERS; i++) {
     uAmp: uniforms.uAmp,
     uFreq: uniforms.uFreq,
     uSharpness: uniforms.uSharpness,
+    uSpectrum: { value: new Float32Array(8) },
     uColorA: uniforms.uColorA,
     uColorB: uniforms.uColorB,
   };
@@ -747,6 +749,7 @@ function animate() {
   uniforms.uBass.value = bands.bass;
   uniforms.uMid.value = bands.mid;
   uniforms.uTreble.value = bands.treble;
+  uniforms.uSpectrum.value.set(audio.spectrum);
 
   ringLayerBands[0].set(audio.spectrum);
   for (let h = 1; h < RING_TRAIL_LAYERS; h++) {
@@ -786,13 +789,17 @@ function animate() {
   if (activeBlob === blobSphere) {
     let chaseBass = bands.bass;
     let chaseTreble = bands.treble;
+    let chaseSpectrum = audio.spectrum;
     for (let i = 0; i < SPHERE_TRAIL_LAYERS; i++) {
       const rate = SPHERE_TRAIL_CHASE_RATES[i];
       const eu = sphereEchoUniforms[i];
       eu.uBass.value += (chaseBass - eu.uBass.value) * rate;
       eu.uTreble.value += (chaseTreble - eu.uTreble.value) * rate;
+      const spec = eu.uSpectrum.value;
+      for (let j = 0; j < spec.length; j++) spec[j] += (chaseSpectrum[j] - spec[j]) * rate;
       chaseBass = eu.uBass.value;
       chaseTreble = eu.uTreble.value;
+      chaseSpectrum = spec;
 
       const echo = blobSphereEchoes[i];
       echo.rotation.copy(blobSphere.rotation);
