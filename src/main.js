@@ -823,18 +823,16 @@ if (window.electronAPI?.isElectron) {
   // "Vidrio esmerilado": only meaningful inside the real Electron window
   // (a browser tab can't blur the desktop behind it), so this whole section
   // stays hidden outside Electron. Main process does the actual OS-level
-  // work (setBackgroundMaterial('acrylic') on Windows 11); here we just
-  // thin out the app's own opaque backdrop so that native blur shows
-  // through around the halftone dots/panel instead of being hidden by it.
+  // work (setBackgroundMaterial('acrylic') on Windows 11) — transparency
+  // only reliably applies at window-construction time, so toggling this
+  // recreates the whole window (see setGlassMode in main.cjs); this page's
+  // own body/button state gets pushed back in on the fresh reload rather
+  // than set here, since this page is about to be torn down.
   const glassSection = document.getElementById("window-glass-section");
   const glassToggleBtn = document.getElementById("window-glass-toggle");
   if (glassSection && window.electronAPI.toggleGlass) {
     glassSection.style.display = "";
-    glassToggleBtn.addEventListener("click", async () => {
-      const glassOn = await window.electronAPI.toggleGlass();
-      document.body.classList.toggle("glass-window", glassOn);
-      glassToggleBtn.classList.toggle("is-active", glassOn);
-    });
+    glassToggleBtn.addEventListener("click", () => window.electronAPI.toggleGlass());
   }
 }
 

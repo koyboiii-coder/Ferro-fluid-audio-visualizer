@@ -24,33 +24,27 @@ let glassMode = false;
 
 const iconPath = path.join(__dirname, "icon.png");
 
-// The window is always created with transparent:true so glass mode can be
-// switched on later without recreating it (Electron only lets you set
-// `transparent` at construction time). Off by default, setBackgroundColor
-// paints it fully solid — pixel-identical to the old opaque window.
-function applyGlassMode(win, enabled) {
-  glassMode = enabled;
-  if (process.platform === "win32") {
-    try {
-      // Windows 11 22H2+ only; older Windows throws, so fall back to plain
-      // (unblurred) transparency instead of a solid frosted appearance.
-      win.setBackgroundMaterial(enabled ? "acrylic" : "none");
-    } catch (err) {
-      // no-op: setBackgroundColor below still gives a see-through window
-    }
-  }
-  win.setBackgroundColor(enabled ? "#00000000" : "#0a0a0f");
-}
-
-function createWindow() {
+// `transparent`/`backgroundMaterial` only reliably take effect when set at
+// BrowserWindow construction time on Windows — flipping them on a live
+// window via the setter methods compiles and runs without error, but the
+// compositor never actually re-treats the page as see-through. So toggling
+// glass mode recreates the window from scratch with the right options baked
+// in, instead of mutating the existing one.
+function createWindow(bounds) {
+  const wasVisible = mainWindow != null;
+  const glass = glassMode;
   mainWindow = new BrowserWindow({
     width: 520,
     height: 660,
     minWidth: 400,
     minHeight: 420,
+    ...bounds,
     frame: false,
     alwaysOnTop,
+    show: !wasVisible, // avoid a visible flash of the un-styled window when swapping
     transparent: true,
+    backgroundMaterial: process.platform === "win32" ? (glass ? "acrylic" : "none") : undefined,
+    backgroundColor: glass ? "#00000000" : "#0a0a0f",
     icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -58,9 +52,11 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
-  applyGlassMode(mainWindow, false);
   mainWindow.webContents.on("render-process-gone", (_e, details) => debugLog("render-process-gone", details));
   mainWindow.on("unresponsive", () => debugLog("window unresponsive"));
+  mainWindow.once("ready-to-show", () => {
+    if (wasVisible) mainWindow.show();
+  });
 
   if (app.isPackaged) {
     mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
@@ -76,6 +72,34 @@ function createWindow() {
       mainWindow.hide();
     }
   });
+}
+
+// The fresh page (after recreation) starts with no idea glass mode is on —
+// it thins out its own opaque --lc-void backdrop via the "glass-window" body
+// class (see styles/liquid-chrome.css) and reflects the toggle button's
+// active state, normally set by the click handler that's gone now that its
+// window was destroyed. Push both once the new page has loaded.
+function syncGlassClassToRenderer() {
+  mainWindow.webContents.once("did-finish-load", () => {
+    mainWindow.webContents
+      .executeJavaScript(
+        `document.body.classList.toggle("glass-window", ${glassMode});
+         document.getElementById("window-glass-toggle")?.classList.toggle("is-active", ${glassMode});`
+      )
+      .catch(() => {});
+  });
+}
+
+function setGlassMode(enabled) {
+  glassMode = enabled;
+  if (!mainWindow) return;
+  const bounds = mainWindow.getBounds();
+  const wasAlwaysOnTop = mainWindow.isAlwaysOnTop();
+  mainWindow.removeAllListeners("close");
+  mainWindow.destroy();
+  createWindow(bounds);
+  mainWindow.setAlwaysOnTop(wasAlwaysOnTop);
+  syncGlassClassToRenderer();
 }
 
 function showWindow() {
@@ -179,7 +203,9 @@ ipcMain.handle("window:toggle-always-on-top", () => {
   mainWindow?.setAlwaysOnTop(alwaysOnTop);
   return alwaysOnTop;
 });
-ipcMain.handle("window:toggle-glass", () => {
-  if (mainWindow) applyGlassMode(mainWindow, !glassMode);
-  return glassMode;
-});
+// Fire-and-forget, not handle/invoke: setGlassMode() destroys the very
+// webContents that sent this message, so a request/response round-trip
+// would need to reply to a sender that may no longer exist by the time
+// this returns. The fresh page reflects the new state itself once loaded
+// (see syncGlassClassToRenderer).
+ipcMain.on("window:toggle-glass", () => setGlassMode(!glassMode));
