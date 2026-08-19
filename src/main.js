@@ -38,6 +38,12 @@ const PRESETS = [
   { name: "Vino", a: "#0d0207", b: "#d94f7a", glow: "#ff2e63", bg: "#100208" },
   { name: "Malva", a: "#0c070a", b: "#e0b8c9", glow: "#c98aa8", bg: "#0d0709" },
   { name: "Turquesa", a: "#020c0d", b: "#6bf0e0", glow: "#22e0c8", bg: "#030d0e" },
+  // Inverted valley/peak: valle (rest state) reads white/pale instead of the
+  // usual dark, with peaks/spikes carrying the saturated color instead —
+  // still a dark void behind it, so the pale metal itself stays the contrast.
+  { name: "Perla", a: "#f5f1ea", b: "#caa15a", glow: "#ffe1a8", bg: "#0d0b08" },
+  { name: "Nieve", a: "#f7fbff", b: "#4fc3ff", glow: "#bfe8ff", bg: "#050a10" },
+  { name: "Marfil", a: "#f7efe4", b: "#c65a6e", glow: "#ff9db0", bg: "#0d0508" },
   // Bright glass/opal look with a pale void — the one deliberate exception
   // to "the void is always dark", requested to match a specific reference.
   // envIntensity/lightBoost push the reflections way up so it reads as

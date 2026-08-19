@@ -35,7 +35,7 @@ Nikkiro Audio Visualizer isn't just one shape or one look — it's a small toolk
 - **Three audio input sources**: local audio file (drag-and-drop or file picker), microphone, or **system audio capture** (grabs whatever is playing on your PC, with zero dialogs in the desktop app).
 - **Reactive rotation with real inertia**: bass hits add angular acceleration to the spin instead of snapping to the current audio level, so it feels driven by momentum rather than mechanically tracking the signal.
 - **Two background styles**: an animated halftone dot-grid or a soft blurred aura — both react to bass with the same underlying reactive uniforms.
-- **19 curated color presets** plus full manual control over 5 color fields (valley, peak, accent, background, iris), each preset keeping its hues analogous so the material always reads as one coherent metal or glass.
+- **22 curated color presets** — including a few pale/pearl presets with an inverted white valley instead of the usual dark one — plus full manual control over 5 color fields (valley, peak, accent, background, iris), each preset keeping its hues analogous so the material always reads as one coherent metal or glass.
 - **Desktop widget mode (Windows/Electron)**: a frameless, always-on-top window with a system tray icon, automatic system-audio capture with no picker dialog, and an optional **frosted/acrylic glass window** that lets your desktop show through, blurred, behind the whole app.
 
 ## Tech stack
@@ -90,7 +90,7 @@ with a symlink-permission error.
 | Material (esfera) | Sphere-only: Metal (opaque liquid metal) or Cristal (transparent glass) |
 | Fondo | Puntos (halftone dot grid) or Difuminado (blurred aura) background style |
 | Ventana | Electron only: toggle the frosted/acrylic glass window effect |
-| Paletas | 19 preset color combinations |
+| Paletas | 22 preset color combinations |
 | Colores | Valle (valley), Pico (peak), Acento (accent light), Fondo (background), Iris (iridescent rim tint) |
 | Sensibilidad | Overall audio reactivity multiplier |
 | Suavizado | How quickly the visuals respond to changes in the audio signal |
