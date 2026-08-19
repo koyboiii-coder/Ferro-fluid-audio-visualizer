@@ -195,11 +195,11 @@ export const ringPlaneFragmentGLSL = /* glsl */ `
       // boost wherever the bulge shape is actively changing (bass hits),
       // slowly drifting so it reads as light raking across moving liquid.
       float edgeDist = min(abs(dist - innerR), abs(dist - outerR));
-      float rimEdge = 1.0 - smoothstep(0.0, 0.035, edgeDist);
+      float rimEdge = 1.0 - smoothstep(0.0, 0.008, edgeDist);
       float rimActivity = clamp(fwidth(lobes) * 6.0, 0.0, 1.0);
-      float rim = clamp(rimEdge * 0.45 + rimActivity, 0.0, 1.0);
+      float rim = clamp(rimEdge * 0.35 + rimActivity, 0.0, 1.0);
       float hue = fract(angle / TAU * 2.0 + dist * 0.5 - uTime * 0.04);
-      color += hue2rgb(hue) * uIrisTint * rim * 0.55;
+      color += hue2rgb(hue) * uIrisTint * rim * 0.45;
 
       vec3 chAlpha = vec3(maskR, maskG, maskB) * layerFade;
       outColor = outColor * (1.0 - chAlpha) + color * chAlpha;
