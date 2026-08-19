@@ -30,12 +30,37 @@ const MEDIA_SERVER_SCRIPT = [
   "function Await($WinRtTask, $ResultType) { $asTask = $asTaskGeneric.MakeGenericMethod($ResultType); $netTask = $asTask.Invoke($null, @($WinRtTask)); $netTask.Wait(-1) | Out-Null; $netTask.Result }",
   "[Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager,Windows.Media.Control,ContentType=WindowsRuntime] | Out-Null",
   "$manager = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])",
-  "function Get-SpotifySession { $manager.GetSessions() | Where-Object { $_.SourceAppUserModelId -match 'Spotify' } | Select-Object -First 1 }",
+  // Not Spotify-only anymore: SMTC is a system-wide API, and anything that
+  // integrates with it (Spotify, but also a browser tab using the Media
+  // Session API — YouTube Music, SoundCloud, etc.) shows up here the same
+  // way. Prefers whichever session is actually Playing (so a paused
+  // leftover session elsewhere doesn't win over what's audibly playing
+  // now); falls back to the first session if none are.
+  "function Get-ActiveSession {",
+  "  $sessions = $manager.GetSessions()",
+  "  if ($sessions.Count -eq 0) { return $null }",
+  "  $playing = $sessions | Where-Object { $_.GetPlaybackInfo().PlaybackStatus -eq [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus]::Playing } | Select-Object -First 1",
+  "  if ($null -ne $playing) { return $playing }",
+  "  return $sessions | Select-Object -First 1",
+  "}",
+  // SMTC only ever identifies the *app* (SourceAppUserModelId) — Windows
+  // has no concept of which website a browser tab is playing from, so a
+  // literal "YouTube" label isn't something this API can actually give us.
+  // This names the app itself, which for a browser reads as the browser's
+  // own name (e.g. "Brave"), not the site.
+  "function Get-SourceName($aumid) {",
+  "  if ($aumid -match 'Spotify') { return 'Spotify' }",
+  "  if ($aumid -match 'Brave') { return 'Brave' }",
+  "  if ($aumid -match 'Chrome') { return 'Chrome' }",
+  "  if ($aumid -match 'MSEdge') { return 'Edge' }",
+  "  if ($aumid -match '[Ff]irefox') { return 'Firefox' }",
+  "  return $aumid",
+  "}",
   "function Write-Line($s) { [Console]::Out.WriteLine($s); [Console]::Out.Flush() }",
   "while ($true) {",
   "  $line = [Console]::In.ReadLine()",
   "  if ($null -eq $line) { break }",
-  "  $session = Get-SpotifySession",
+  "  $session = Get-ActiveSession",
   "  if ($line -eq 'POLL') {",
   "    if ($null -eq $session) {",
   "      Write-Line '{\"active\":false}'",
@@ -50,11 +75,7 @@ const MEDIA_SERVER_SCRIPT = [
   // of running its own ticking interval, so it never drifts from Spotify.
   "      $result = [PSCustomObject]@{",
   "        active = $true",
-  // Hardcoded rather than derived from SourceAppUserModelId: the session
-  // lookup above only ever matches Spotify (-match 'Spotify'), so this is
-  // simply naming what was already filtered for. If another source is ever
-  // added, that filter and this line grow together.
-  "        source = 'Spotify'",
+  "        source = Get-SourceName $session.SourceAppUserModelId",
   "        title = $props.Title",
   "        artist = $props.Artist",
   "        status = $playback.PlaybackStatus.ToString()",
