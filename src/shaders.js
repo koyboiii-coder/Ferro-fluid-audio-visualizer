@@ -242,7 +242,12 @@ export const ringPlaneFragmentGLSL = /* glsl */ `
       float rimActivity = clamp(fwidth(lobes) * 6.0, 0.0, 1.0);
       float rim = clamp(rimEdge * shimmer * 0.9 + rimActivity, 0.0, 1.0);
       float hue = fract(angle / TAU * 2.0 + dist * 0.5 - uTime * 0.04);
-      color += hue2rgb(hue) * uIrisTint * rim * 0.45;
+      // uIrisTint is the user's chosen color, not just a multiplier: it must
+      // stay clearly visible in whatever hue the user picks (including pure
+      // green, which hue2rgb() itself keeps dim to avoid a sickly cast in
+      // the AUTO rainbow cycle). hue2rgb only adds a shimmering brightness
+      // swing on top of the full tint instead of gating individual channels.
+      color += uIrisTint * (0.55 + 0.65 * hue2rgb(hue)) * rim * 0.45;
 
       vec3 chAlpha = vec3(maskR, maskG, maskB) * layerFade;
       outColor = outColor * (1.0 - chAlpha) + color * chAlpha;

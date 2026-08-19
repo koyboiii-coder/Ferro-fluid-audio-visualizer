@@ -353,11 +353,14 @@ scene.add(blobRing);
 
 let activeBlob = blobSphere;
 
+const materialSection = document.getElementById("material-section");
+
 function setShape(mesh) {
   activeBlob = mesh;
   blobSphere.visible = mesh === blobSphere;
   blobRing.visible = mesh === blobRing;
-  blobSphereEchoes.forEach((echo) => (echo.visible = mesh === blobSphere));
+  blobSphereEchoes.forEach((echo) => (echo.visible = mesh === blobSphere && materialStyle === "metal"));
+  materialSection.style.display = mesh === blobSphere ? "" : "none";
 }
 
 const shapeSphereBtn = document.getElementById("shape-sphere");
@@ -372,6 +375,46 @@ shapeRingBtn.addEventListener("click", () => {
   shapeRingBtn.classList.add("is-active");
   shapeSphereBtn.classList.remove("is-active");
 });
+
+// "Cristal" swaps the sphere's black-metal material for a transmissive
+// glass one — same displaced geometry/shader, just different physical
+// params — so the halftone/blur background actually shows refracted
+// through it instead of being hidden behind solid black. The trailing
+// echo meshes are hidden in glass mode: their whole look (flat colored
+// silhouettes) reads as smudges once the base material is see-through.
+const materialMetalBtn = document.getElementById("material-metal");
+const materialGlassBtn = document.getElementById("material-glass");
+let materialStyle = "metal";
+
+function setMaterialStyle(style) {
+  materialStyle = style;
+  const glass = style === "glass";
+  sphereMaterial.metalness = glass ? 0.05 : 1.0;
+  sphereMaterial.roughness = glass ? 0.06 : 0.12;
+  // physically-based transmission alone reads as almost solid black against
+  // this dark studio environment (its refraction highlights get drowned out
+  // by Fresnel reflection) — real alpha transparency is what actually makes
+  // the background show through and reads as "glass" at a glance. A bit of
+  // transmission is layered on top just for the refraction highlight detail.
+  sphereMaterial.transmission = glass ? 0.5 : 0.0;
+  sphereMaterial.thickness = glass ? 0.6 : 0.0;
+  sphereMaterial.ior = glass ? 1.45 : 1.5;
+  sphereMaterial.transparent = glass;
+  sphereMaterial.opacity = glass ? 0.38 : 1.0;
+  sphereMaterial.depthWrite = !glass;
+  sphereMaterial.clearcoat = glass ? 0.7 : 0.25;
+  sphereMaterial.clearcoatRoughness = glass ? 0.1 : 0.35;
+  sphereMaterial.needsUpdate = true;
+  blobSphereEchoes.forEach((echo) => (echo.visible = activeBlob === blobSphere && !glass));
+  materialMetalBtn.classList.toggle("is-active", !glass);
+  materialGlassBtn.classList.toggle("is-active", glass);
+}
+materialMetalBtn.addEventListener("click", () => setMaterialStyle("metal"));
+materialGlassBtn.addEventListener("click", () => setMaterialStyle("glass"));
+
+// establish the initial echo/section visibility now that both shape and
+// material state exist (the sphere is the default active shape).
+setShape(blobSphere);
 
 // Halftone background: a dot-grid version of the old CSS blurred aura,
 // rendered in WebGL so dot size can track brightness. Parented to the
