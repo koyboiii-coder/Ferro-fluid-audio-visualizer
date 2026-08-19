@@ -120,9 +120,13 @@ export const ringPlaneFragmentGLSL = /* glsl */ `
 
   // cheap HSL-ish hue ramp (h wraps 0..1) for the iridescent sheen below —
   // no saturation/lightness params needed since it's screen-blended onto
-  // an existing color rather than used standalone.
+  // an existing color rather than used standalone. Green is knocked way
+  // down so the cycle reads as reds/pinks/purples/blues/cyans rather than
+  // the sickly yellow-green band a plain hue wheel passes through.
   vec3 hue2rgb(float h) {
-    return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    vec3 c = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    c.g *= 0.35;
+    return c;
   }
 
   // Unlike the sphere (deliberately dead-still in silence), the ring gets a
@@ -148,7 +152,8 @@ export const ringPlaneFragmentGLSL = /* glsl */ `
 
     // thinner at rest than the first pass — the tube itself is the
     // baseline visual weight, bass hits are what add real bulk.
-    float wobble = idleWobble(angle, uTime) * 0.012;
+    float wobbleRaw = idleWobble(angle, uTime);
+    float wobble = wobbleRaw * 0.012;
     float innerR = 0.5;
 
     float aa = fwidth(dist) * 1.5;
@@ -189,15 +194,17 @@ export const ringPlaneFragmentGLSL = /* glsl */ `
       vec3 color = mix(uColorA, uColorB, clamp(lobes * 1.5, 0.0, 1.0));
 
       // liquid-chrome sheen, tinted by uIrisTint so it can be colored from
-      // the panel instead of always full-rainbow. Two sources so it's never
-      // completely invisible in silence: a constant faint line right along
-      // both edges (like a metal rim catching light) plus a much stronger
-      // boost wherever the bulge shape is actively changing (bass hits),
-      // slowly drifting so it reads as light raking across moving liquid.
+      // the panel instead of always full-rainbow. Not a static ring outline:
+      // the thin edge line is only lit where the SAME wobble driving the
+      // idle "symbiote" breathing is currently near its peak, so the
+      // highlight travels/pulses around the rim with that motion instead
+      // of sitting there constantly — plus a much stronger boost wherever
+      // the bulge shape is actively changing (bass hits).
       float edgeDist = min(abs(dist - innerR), abs(dist - outerR));
       float rimEdge = 1.0 - smoothstep(0.0, 0.008, edgeDist);
+      float shimmer = smoothstep(0.15, 0.85, wobbleRaw);
       float rimActivity = clamp(fwidth(lobes) * 6.0, 0.0, 1.0);
-      float rim = clamp(rimEdge * 0.35 + rimActivity, 0.0, 1.0);
+      float rim = clamp(rimEdge * shimmer * 0.9 + rimActivity, 0.0, 1.0);
       float hue = fract(angle / TAU * 2.0 + dist * 0.5 - uTime * 0.04);
       color += hue2rgb(hue) * uIrisTint * rim * 0.45;
 
