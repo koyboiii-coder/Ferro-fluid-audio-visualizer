@@ -670,7 +670,8 @@ btnSystem.addEventListener("click", async () => {
     playbackRow.style.display = "none";
     document.body.classList.add("playing");
   } catch (err) {
-    alert(err.message || "No se pudo capturar el audio del sistema.");
+    console.error("system audio capture failed", err.name, err.message, err);
+    alert(`${err.name || "Error"}: ${err.message || "No se pudo capturar el audio del sistema."}`);
   }
 });
 

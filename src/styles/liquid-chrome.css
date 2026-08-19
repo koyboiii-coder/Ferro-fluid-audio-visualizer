@@ -112,6 +112,12 @@
    'acrylic' on Windows 11, done in electron/main.cjs) — the app's own
    --lc-void backdrop just needs to get out of the way so that shows through
    instead of being covered by a solid color. */
+/* the true page background lives on <body> itself (see style.css), sitting
+   BELOW .lc-bg in a separate layer — making only .lc-bg transparent left
+   this opaque backdrop still covering the whole window underneath it. */
+body.glass-window {
+  background: transparent;
+}
 body.glass-window .lc-bg {
   background: transparent;
 }

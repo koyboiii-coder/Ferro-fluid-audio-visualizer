@@ -1,5 +1,20 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, session, desktopCapturer, nativeImage } = require("electron");
 const path = require("path");
+const fs = require("fs");
+
+// Temporary diagnostic log (not shipped logic, just visibility into the
+// "Sistema" audio capture failing after the Electron 33->43 upgrade, which
+// can't be reproduced/debugged from outside a real desktop session).
+const debugLogPath = path.join(app.getPath("userData"), "debug.log");
+function debugLog(...args) {
+  try {
+    const line = `[${new Date().toISOString()}] ${args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ")}\n`;
+    fs.appendFileSync(debugLogPath, line);
+  } catch (err) {
+    // no-op: logging must never crash the app
+  }
+}
+process.on("uncaughtException", (err) => debugLog("uncaughtException", err.stack || err.message));
 
 let mainWindow = null;
 let tray = null;
@@ -44,6 +59,8 @@ function createWindow() {
     },
   });
   applyGlassMode(mainWindow, false);
+  mainWindow.webContents.on("render-process-gone", (_e, details) => debugLog("render-process-gone", details));
+  mainWindow.on("unresponsive", () => debugLog("window unresponsive"));
 
   if (app.isPackaged) {
     mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
@@ -119,9 +136,26 @@ app.whenReady().then(() => {
   // Skip the picker entirely: grab the primary screen's audio loopback the
   // instant "Sistema" is clicked, so the widget just works with no dialog.
   session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
-    desktopCapturer.getSources({ types: ["screen"] }).then((sources) => {
-      callback({ video: sources[0], audio: "loopback" });
-    });
+    debugLog("setDisplayMediaRequestHandler: request received");
+    desktopCapturer
+      .getSources({ types: ["screen"] })
+      .then((sources) => {
+        debugLog(
+          "desktopCapturer sources",
+          sources.map((s) => ({ id: s.id, name: s.name, displayId: s.display_id }))
+        );
+        if (sources.length === 0) {
+          debugLog("no screen sources available, calling back with empty streams");
+          callback({});
+          return;
+        }
+        debugLog("granting video source", sources[0].id, sources[0].name);
+        callback({ video: sources[0], audio: "loopback" });
+      })
+      .catch((err) => {
+        debugLog("desktopCapturer.getSources failed", err.stack || err.message);
+        callback({});
+      });
   });
 
   createWindow();

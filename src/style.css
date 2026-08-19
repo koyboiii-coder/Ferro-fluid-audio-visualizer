@@ -43,6 +43,20 @@ body.electron-app #electron-titlebar {
   display: flex;
 }
 
+/* A floating desktop widget reads cleaner with its chrome tucked away by
+   default — the titlebar controls and settings gear fade in only while the
+   mouse is actually over the window, instead of sitting there permanently. */
+body.electron-app #electron-titlebar,
+body.electron-app #panel-toggle {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+body.electron-app:hover #electron-titlebar,
+body.electron-app:hover #panel-toggle {
+  opacity: 1;
+}
+
 body.electron-app #panel-toggle,
 body.electron-app #panel-wrap,
 body.electron-app #drop-hint {
@@ -64,6 +78,9 @@ body.electron-app #drop-hint {
 }
 
 .titlebar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 26px;
   height: 24px;
   border: none;
@@ -73,6 +90,10 @@ body.electron-app #drop-hint {
   line-height: 1;
   border-radius: 5px;
   cursor: pointer;
+}
+
+.titlebar-btn svg {
+  display: block;
 }
 
 .titlebar-btn:hover {
