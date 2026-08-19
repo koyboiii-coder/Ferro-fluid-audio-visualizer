@@ -56,10 +56,14 @@ function createWindow(bounds) {
       additionalArguments: [`--glass-mode=${glass ? "1" : "0"}`],
     },
   });
-  // backgroundMaterial (Windows 11 22H2+ acrylic) is set both at construction
-  // AND redundantly via the live setter right after, before the window is
-  // ever shown — belt and suspenders, since it's unclear which path this
-  // specific Electron/Windows combination actually honors.
+  // The `backgroundColor` constructor option was silently not taking effect
+  // on this Electron/Windows combination — getBackgroundColor() came back
+  // as the Electron default #FFFFFF (opaque white) regardless of what was
+  // passed in, which is exactly the plain white flash seen on toggle. Same
+  // deal for backgroundMaterial. Both get set again explicitly right after
+  // construction, before the window is ever shown, as the path that
+  // actually sticks.
+  mainWindow.setBackgroundColor(glass ? "#00000000" : "#0a0a0f");
   if (process.platform === "win32") {
     try {
       mainWindow.setBackgroundMaterial(glass ? "acrylic" : "none");
