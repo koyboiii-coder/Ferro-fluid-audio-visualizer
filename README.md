@@ -1,11 +1,11 @@
-# Ferrofluid Visualizer
+# Nikkiro Audio Visualizer
 
 A 3D audio-reactive music visualizer built with [Three.js](https://threejs.org/): a metallic,
 spiky blob — modeled after real ferrofluid under a magnetic field — that deforms and reacts
 live to whatever audio is playing, with a fully configurable color system and an optional
 desktop-widget mode (Electron) that floats always-on-top with a system tray icon.
 
-![Ferrofluid Visualizer](electron/icon.png)
+![Nikkiro Audio Visualizer](electron/icon.png)
 
 ## What it does
 

@@ -73,7 +73,7 @@ function showWindow() {
 function createTray() {
   const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
   tray = new Tray(icon);
-  tray.setToolTip("Ferrofluid Visualizer");
+  tray.setToolTip("Nikkiro Audio Visualizer");
 
   const rebuildMenu = () => {
     const menu = Menu.buildFromTemplate([
