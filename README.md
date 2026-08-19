@@ -8,7 +8,7 @@
 [![Built with Three.js](https://img.shields.io/badge/built%20with-Three.js-8fd0ff)](https://threejs.org/)
 [![Built with Electron](https://img.shields.io/badge/desktop-Electron-8fd0ff)](https://www.electronjs.org/)
 
-**[⬇️ Download the latest Windows release](https://github.com/koyboiii-coder/Nikkiro-Audio-Visualizer/releases/latest)** — a single portable `.exe`, no installation required.
+**[▶ Try the live demo](https://koyboiii-coder.github.io/Nikkiro-Audio-Visualizer/)** — runs entirely in your browser, no install, no signup. **[⬇️ Download the Windows desktop widget](https://github.com/koyboiii-coder/Nikkiro-Audio-Visualizer/releases/latest)** for the always-on-top version with system-tray integration and a frosted-glass window.
 
 <p>
   <img src="docs/screenshot-sphere.png" alt="Nikkiro Audio Visualizer 3D chrome sphere audio visualizer reacting to bass with spiky metallic deformation" width="49%" />
