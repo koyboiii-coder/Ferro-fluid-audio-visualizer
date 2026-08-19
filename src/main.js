@@ -825,13 +825,19 @@ if (window.electronAPI?.isElectron) {
   // stays hidden outside Electron. Main process does the actual OS-level
   // work (setBackgroundMaterial('acrylic') on Windows 11) — transparency
   // only reliably applies at window-construction time, so toggling this
-  // recreates the whole window (see setGlassMode in main.cjs); this page's
-  // own body/button state gets pushed back in on the fresh reload rather
-  // than set here, since this page is about to be torn down.
+  // recreates the whole window (see setGlassMode in main.cjs). This fresh
+  // page reads its OWN initial state synchronously off electronAPI
+  // (populated from this process's own argv in preload.cjs) instead of
+  // waiting on any message, since the previous page (and its click handler)
+  // is gone along with the window it was destroyed with.
   const glassSection = document.getElementById("window-glass-section");
   const glassToggleBtn = document.getElementById("window-glass-toggle");
   if (glassSection && window.electronAPI.toggleGlass) {
     glassSection.style.display = "";
+    if (window.electronAPI.glassModeInitial) {
+      document.body.classList.add("glass-window");
+      glassToggleBtn.classList.add("is-active");
+    }
     glassToggleBtn.addEventListener("click", () => window.electronAPI.toggleGlass());
   }
 }

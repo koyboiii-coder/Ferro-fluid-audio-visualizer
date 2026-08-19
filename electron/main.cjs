@@ -43,14 +43,34 @@ function createWindow(bounds) {
     alwaysOnTop,
     show: !wasVisible, // avoid a visible flash of the un-styled window when swapping
     transparent: true,
-    backgroundMaterial: process.platform === "win32" ? (glass ? "acrylic" : "none") : undefined,
     backgroundColor: glass ? "#00000000" : "#0a0a0f",
     icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
+      // Deterministically tell the fresh page whether glass mode is on
+      // *before* its own JS runs, instead of racing a "did-finish-load"
+      // listener attached after loadURL/loadFile already fired (a local
+      // asar-packed page can finish loading fast enough to win that race).
+      additionalArguments: [`--glass-mode=${glass ? "1" : "0"}`],
     },
+  });
+  // backgroundMaterial (Windows 11 22H2+ acrylic) is set both at construction
+  // AND redundantly via the live setter right after, before the window is
+  // ever shown — belt and suspenders, since it's unclear which path this
+  // specific Electron/Windows combination actually honors.
+  if (process.platform === "win32") {
+    try {
+      mainWindow.setBackgroundMaterial(glass ? "acrylic" : "none");
+    } catch (err) {
+      debugLog("setBackgroundMaterial failed", err.message);
+    }
+  }
+  debugLog("createWindow", {
+    glass,
+    platform: process.platform,
+    backgroundColor: mainWindow.getBackgroundColor(),
   });
   mainWindow.webContents.on("render-process-gone", (_e, details) => debugLog("render-process-gone", details));
   mainWindow.on("unresponsive", () => debugLog("window unresponsive"));
@@ -74,24 +94,9 @@ function createWindow(bounds) {
   });
 }
 
-// The fresh page (after recreation) starts with no idea glass mode is on —
-// it thins out its own opaque --lc-void backdrop via the "glass-window" body
-// class (see styles/liquid-chrome.css) and reflects the toggle button's
-// active state, normally set by the click handler that's gone now that its
-// window was destroyed. Push both once the new page has loaded.
-function syncGlassClassToRenderer() {
-  mainWindow.webContents.once("did-finish-load", () => {
-    mainWindow.webContents
-      .executeJavaScript(
-        `document.body.classList.toggle("glass-window", ${glassMode});
-         document.getElementById("window-glass-toggle")?.classList.toggle("is-active", ${glassMode});`
-      )
-      .catch(() => {});
-  });
-}
-
 function setGlassMode(enabled) {
   glassMode = enabled;
+  debugLog("setGlassMode", enabled);
   if (!mainWindow) return;
   const bounds = mainWindow.getBounds();
   const wasAlwaysOnTop = mainWindow.isAlwaysOnTop();
@@ -99,7 +104,6 @@ function setGlassMode(enabled) {
   mainWindow.destroy();
   createWindow(bounds);
   mainWindow.setAlwaysOnTop(wasAlwaysOnTop);
-  syncGlassClassToRenderer();
 }
 
 function showWindow() {
