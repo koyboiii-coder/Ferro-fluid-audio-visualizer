@@ -107,6 +107,21 @@
   .lc-bg .aura { animation: none; }
 }
 
+/* "Vidrio esmerilado" (Electron only): the OS paints a real frosted-glass
+   blur of the desktop behind the transparent window (setBackgroundMaterial
+   'acrylic' on Windows 11, done in electron/main.cjs) — the app's own
+   --lc-void backdrop just needs to get out of the way so that shows through
+   instead of being covered by a solid color. */
+body.glass-window .lc-bg {
+  background: transparent;
+}
+body.glass-window .lc-bg .vig {
+  background: radial-gradient(120% 92% at 50% 46%, transparent 45%, rgba(0, 0, 0, 0.35) 100%);
+}
+body.glass-window .lc-panel {
+  background: rgba(13, 15, 19, 0.38);
+}
+
 /* ============================================================
    2. CAPAS
    ============================================================ */

@@ -6,6 +6,10 @@ export class AudioEngine {
     this.sourceNode = null;
     this.audioEl = null;
     this.smoothing = 0.35;
+    // getUserMedia/getDisplayMedia streams keep running (mic light stays on,
+    // "sharing" browser bar stays up) until their tracks are stopped —
+    // disconnecting the WebAudio node alone doesn't release the hardware.
+    this._activeStream = null;
 
     this.bands = { bass: 0, mid: 0, treble: 0, overall: 0 };
     this._targets = { bass: 0, mid: 0, treble: 0, overall: 0 };
@@ -32,6 +36,7 @@ export class AudioEngine {
   async loadFile(file) {
     this._ensureContext();
     this._disconnectSource();
+    this._stopActiveStream();
 
     if (!this.audioEl) {
       this.audioEl = new Audio();
@@ -52,8 +57,10 @@ export class AudioEngine {
   async useMicrophone() {
     this._ensureContext();
     this._disconnectSource();
+    this._stopActiveStream();
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    this._activeStream = stream;
     this.sourceNode = this.context.createMediaStreamSource(stream);
     this.sourceNode.connect(this.analyser);
     // do not connect analyser -> destination for mic (avoid feedback)
@@ -67,6 +74,7 @@ export class AudioEngine {
   async useSystemAudio() {
     this._ensureContext();
     this._disconnectSource();
+    this._stopActiveStream();
 
     const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
     const audioTracks = stream.getAudioTracks();
@@ -77,6 +85,7 @@ export class AudioEngine {
       throw new Error('No se compartió audio. Al elegir qué compartir, marca la casilla "Compartir audio".');
     }
 
+    this._activeStream = stream;
     this.sourceNode = this.context.createMediaStreamSource(stream);
     this.sourceNode.connect(this.analyser);
     audioTracks[0].addEventListener("ended", () => this._disconnectSource());
@@ -98,6 +107,29 @@ export class AudioEngine {
         /* noop */
       }
     }
+  }
+
+  _stopActiveStream() {
+    if (this._activeStream) {
+      this._activeStream.getTracks().forEach((track) => track.stop());
+      this._activeStream = null;
+    }
+  }
+
+  // Turns whichever source is live fully off: releases the mic/screen-share
+  // hardware (so the OS indicator actually goes away, not just the WebAudio
+  // graph), pauses file playback, and snaps the bands/spectrum back to 0
+  // immediately instead of waiting for smoothing to decay them out.
+  disable() {
+    this._disconnectSource();
+    this._stopActiveStream();
+    if (this.audioEl) this.audioEl.pause();
+    this.sourceNode = null;
+
+    this.bands = { bass: 0, mid: 0, treble: 0, overall: 0 };
+    this._targets = { bass: 0, mid: 0, treble: 0, overall: 0 };
+    this.spectrum.fill(0);
+    this._spectrumTargets.fill(0);
   }
 
   update() {

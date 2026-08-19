@@ -5,18 +5,37 @@ let mainWindow = null;
 let tray = null;
 let alwaysOnTop = true;
 let isQuitting = false;
+let glassMode = false;
 
 const iconPath = path.join(__dirname, "icon.png");
 
+// The window is always created with transparent:true so glass mode can be
+// switched on later without recreating it (Electron only lets you set
+// `transparent` at construction time). Off by default, setBackgroundColor
+// paints it fully solid — pixel-identical to the old opaque window.
+function applyGlassMode(win, enabled) {
+  glassMode = enabled;
+  if (process.platform === "win32") {
+    try {
+      // Windows 11 22H2+ only; older Windows throws, so fall back to plain
+      // (unblurred) transparency instead of a solid frosted appearance.
+      win.setBackgroundMaterial(enabled ? "acrylic" : "none");
+    } catch (err) {
+      // no-op: setBackgroundColor below still gives a see-through window
+    }
+  }
+  win.setBackgroundColor(enabled ? "#00000000" : "#0a0a0f");
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 460,
-    height: 640,
-    minWidth: 340,
+    width: 520,
+    height: 660,
+    minWidth: 400,
     minHeight: 420,
     frame: false,
     alwaysOnTop,
-    backgroundColor: "#0a0a0f",
+    transparent: true,
     icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -24,6 +43,7 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+  applyGlassMode(mainWindow, false);
 
   if (app.isPackaged) {
     mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
@@ -124,4 +144,8 @@ ipcMain.handle("window:toggle-always-on-top", () => {
   alwaysOnTop = !alwaysOnTop;
   mainWindow?.setAlwaysOnTop(alwaysOnTop);
   return alwaysOnTop;
+});
+ipcMain.handle("window:toggle-glass", () => {
+  if (mainWindow) applyGlassMode(mainWindow, !glassMode);
+  return glassMode;
 });

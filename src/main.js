@@ -261,13 +261,38 @@ function createDisplacementMaterial(fieldGLSL, materialUniforms = uniforms) {
         `#include <common>
         uniform vec3 uColorA;
         uniform vec3 uColorB;
-        varying float vSpikeHeight;`
+        uniform vec3 uIrisTint;
+        uniform float uTime;
+        varying float vSpikeHeight;
+
+        // same damped hue ramp as the ring's sheen (green knocked down so the
+        // cycle reads red/pink/purple/blue/cyan instead of a sickly yellow-green).
+        vec3 irisHue2rgb(float h) {
+          vec3 c = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+          c.g *= 0.35;
+          return c;
+        }`
       )
       .replace(
         "#include <color_fragment>",
         `#include <color_fragment>
         float spikeT = clamp(vSpikeHeight * 2.2, 0.0, 1.0);
         diffuseColor.rgb = mix(uColorA, uColorB, spikeT);`
+      )
+      .replace(
+        "#include <emissivemap_fragment>",
+        `#include <emissivemap_fragment>
+        // liquid-chrome iris sheen, the sphere's equivalent of the ring's rim
+        // highlight: a Fresnel-based glow around the silhouette (view-angle
+        // dependent, like a real glass/chrome edge) tinted by uIrisTint and
+        // cycling hue, boosted hard wherever the spike field is actively
+        // changing (bass hits) — added as emissive so it reads on top
+        // regardless of lighting/transmission.
+        float irisFresnel = pow(1.0 - clamp(abs(dot(normalize(vViewPosition), normal)), 0.0, 1.0), 3.0);
+        float irisActivity = clamp(fwidth(vSpikeHeight) * 40.0, 0.0, 1.0);
+        float irisHue = fract(vSpikeHeight * 3.0 - uTime * 0.05);
+        vec3 irisColor = uIrisTint * (0.5 + 0.7 * irisHue2rgb(irisHue));
+        totalEmissiveRadiance += irisColor * (irisFresnel * 0.35 + irisActivity * 0.6);`
       );
   };
 
@@ -303,6 +328,7 @@ for (let i = 0; i < SPHERE_TRAIL_LAYERS; i++) {
     uSpectrum: { value: new Float32Array(8) },
     uColorA: uniforms.uColorA,
     uColorB: uniforms.uColorB,
+    uIrisTint: uniforms.uIrisTint,
   };
   const echoMaterial = createDisplacementMaterial(spikeFieldGLSL, echoUniforms);
   echoMaterial.transparent = true;
@@ -359,7 +385,7 @@ function setShape(mesh) {
   activeBlob = mesh;
   blobSphere.visible = mesh === blobSphere;
   blobRing.visible = mesh === blobRing;
-  blobSphereEchoes.forEach((echo) => (echo.visible = mesh === blobSphere && materialStyle === "metal"));
+  blobSphereEchoes.forEach((echo) => (echo.visible = mesh === blobSphere));
   materialSection.style.display = mesh === blobSphere ? "" : "none";
 }
 
@@ -380,8 +406,9 @@ shapeRingBtn.addEventListener("click", () => {
 // glass one — same displaced geometry/shader, just different physical
 // params — so the halftone/blur background actually shows refracted
 // through it instead of being hidden behind solid black. The trailing
-// echo meshes are hidden in glass mode: their whole look (flat colored
-// silhouettes) reads as smudges once the base material is see-through.
+// echo meshes (and their chromatic-aberration/delay trail, and the iris
+// sheen) stay visible in glass mode too — those "destellos" are exactly
+// what read as liquid-chrome flare against a see-through base.
 const materialMetalBtn = document.getElementById("material-metal");
 const materialGlassBtn = document.getElementById("material-glass");
 let materialStyle = "metal";
@@ -405,7 +432,6 @@ function setMaterialStyle(style) {
   sphereMaterial.clearcoat = glass ? 0.7 : 0.25;
   sphereMaterial.clearcoatRoughness = glass ? 0.1 : 0.35;
   sphereMaterial.needsUpdate = true;
-  blobSphereEchoes.forEach((echo) => (echo.visible = activeBlob === blobSphere && !glass));
   materialMetalBtn.classList.toggle("is-active", !glass);
   materialGlassBtn.classList.toggle("is-active", glass);
 }
@@ -577,7 +603,26 @@ const btnPlayPause = document.getElementById("btn-playpause");
 const playbackRow = document.getElementById("playback-row");
 const trackName = document.getElementById("track-name");
 
-btnFile.addEventListener("click", () => fileInput.click());
+// Clicking whichever source button is already active turns that source
+// fully off (releases the mic/screen-share hardware, pauses the file)
+// instead of re-opening its picker — a second press means "stop".
+function turnAudioOff() {
+  audio.disable();
+  btnFile.classList.remove("is-active");
+  btnMic.classList.remove("is-active");
+  btnSystem.classList.remove("is-active");
+  playbackRow.style.display = "none";
+  btnPlayPause.textContent = "▶";
+  document.body.classList.remove("playing");
+}
+
+btnFile.addEventListener("click", () => {
+  if (btnFile.classList.contains("is-active")) {
+    turnAudioOff();
+    return;
+  }
+  fileInput.click();
+});
 
 fileInput.addEventListener("change", async () => {
   const file = fileInput.files[0];
@@ -596,6 +641,10 @@ async function handleAudioFile(file) {
 }
 
 btnMic.addEventListener("click", async () => {
+  if (btnMic.classList.contains("is-active")) {
+    turnAudioOff();
+    return;
+  }
   try {
     await audio.useMicrophone();
     btnFile.classList.remove("is-active");
@@ -609,6 +658,10 @@ btnMic.addEventListener("click", async () => {
 });
 
 btnSystem.addEventListener("click", async () => {
+  if (btnSystem.classList.contains("is-active")) {
+    turnAudioOff();
+    return;
+  }
   try {
     await audio.useSystemAudio();
     btnFile.classList.remove("is-active");
@@ -765,6 +818,23 @@ if (window.electronAPI?.isElectron) {
     const pinned = await window.electronAPI.toggleAlwaysOnTop();
     pinBtn.classList.toggle("pinned", pinned);
   });
+
+  // "Vidrio esmerilado": only meaningful inside the real Electron window
+  // (a browser tab can't blur the desktop behind it), so this whole section
+  // stays hidden outside Electron. Main process does the actual OS-level
+  // work (setBackgroundMaterial('acrylic') on Windows 11); here we just
+  // thin out the app's own opaque backdrop so that native blur shows
+  // through around the halftone dots/panel instead of being hidden by it.
+  const glassSection = document.getElementById("window-glass-section");
+  const glassToggleBtn = document.getElementById("window-glass-toggle");
+  if (glassSection && window.electronAPI.toggleGlass) {
+    glassSection.style.display = "";
+    glassToggleBtn.addEventListener("click", async () => {
+      const glassOn = await window.electronAPI.toggleGlass();
+      document.body.classList.toggle("glass-window", glassOn);
+      glassToggleBtn.classList.toggle("is-active", glassOn);
+    });
+  }
 }
 
 // ---------- animation loop ----------

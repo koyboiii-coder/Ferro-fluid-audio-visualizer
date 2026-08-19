@@ -5,4 +5,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
   closeWindow: () => ipcRenderer.send("window:close"),
   minimizeWindow: () => ipcRenderer.send("window:minimize"),
   toggleAlwaysOnTop: () => ipcRenderer.invoke("window:toggle-always-on-top"),
+  toggleGlass: () => ipcRenderer.invoke("window:toggle-glass"),
 });
