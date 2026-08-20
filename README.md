@@ -1,4 +1,6 @@
-# Nikkiro Audio Visualizer — 3D Liquid Chrome Music Visualizer
+<p align="center">
+  <img src="brand/lockup.svg" alt="Nikkiro Audio Visualizer" width="380" />
+</p>
 
 **Nikkiro Audio Visualizer** is a free, open-source **3D audio-reactive music visualizer** for the web and Windows desktop, built with [Three.js](https://threejs.org/) and [WebGL](https://www.khronos.org/webgl/). A liquid-chrome object — switchable between a spiky ferrofluid-style **sphere** and a fluid neon **ring** — deforms, glows, and pulses in real time to any audio source: a music file, your microphone, or your computer's system audio. Run it in the browser, or install it as a lightweight always-on-top **desktop widget** for Windows (Electron) that behaves like a live audio spectrum visualizer sitting on top of your other windows.
 

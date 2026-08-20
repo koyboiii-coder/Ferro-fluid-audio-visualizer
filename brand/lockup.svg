@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 128" width="560" height="128" role="img" aria-label="Nikkiro Audio Visualizer">
+  <!-- Dark backing plate (not part of the original mark/icon spec): the
+       ring and "NIKKIRO" text are near-white with no fill of their own,
+       so on a plain white page (GitHub's light theme) they'd be almost
+       invisible. This keeps the lockup legible in both README themes
+       without changing mark.svg / icon.svg / favicon.svg, which are
+       already meant to sit on a dark surface. -->
+  <rect x="4" y="4" width="552" height="120" rx="20" fill="#0A0B0E"/>
+  <circle cx="64" cy="64" r="40" fill="none" stroke="#EAF0F7" stroke-width="10"/>
+  <text x="132" y="62" font-family="Cinzel, Georgia, serif" font-weight="700" font-size="42" letter-spacing="6" fill="#EAF0F7">NIKKIRO</text>
+  <text x="134" y="90" font-family="'Space Mono', monospace" font-size="13" letter-spacing="7.5" fill="#7A808A">AUDIO VISUALIZER</text>
+</svg>
