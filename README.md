@@ -18,6 +18,7 @@
 </p>
 <p>
   <img src="docs/screenshot-media-bar.png" alt="Nikkiro Audio Visualizer desktop widget with a Spotify now-playing bar showing play, pause, next, previous and the current track and artist" width="49%" />
+  <img src="docs/screenshot-panel.png" alt="Nikkiro Audio Visualizer control panel open, showing the color preset grid, custom color pickers, and the blurred-aura background style" width="49%" />
 </p>
 
 ## Contents
