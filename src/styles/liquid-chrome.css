@@ -226,6 +226,77 @@ body.glass-window .lc-panel {
 .lc-dot:hover        { transform: scale(1.08); }
 .lc-dot.is-active    { box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .55); }
 
+.lc-dot-wrap {
+  position: relative;
+}
+
+/* Grid items stretch to fill their column by default, but that's the wrap
+   div itself — .lc-dot inside it is just a normal element sized to its own
+   content (i.e. tiny, since it has none), not to the grid cell, once it's
+   no longer a direct grid child. */
+.lc-dot-wrap .lc-dot {
+  width: 100%;
+  display: block;
+}
+
+.lc-dot-add {
+  background: none;
+  border: 1.5px dashed rgba(255, 255, 255, .3);
+  color: rgba(255, 255, 255, .5);
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lc-dot-add:hover { border-color: rgba(255, 255, 255, .55); color: rgba(255, 255, 255, .85); }
+
+.lc-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.lc-section-header .lc-section-label { margin-bottom: 0; }
+
+.lc-edit-btn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, .25);
+  border-radius: 6px;
+  padding: 3px 10px;
+  color: rgba(255, 255, 255, .65);
+  font-family: var(--lc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+.lc-edit-btn:hover     { border-color: rgba(255, 255, 255, .5); color: #fff; }
+.lc-edit-btn.is-active { background: rgba(255, 255, 255, .12); color: #fff; }
+
+/* Only visible while "Editar" is active — a tiny always-on badge on every
+   custom swatch read as cluttered/hard to hit at this size, so it's opt-in
+   via the edit toggle instead. */
+.lc-dot-remove {
+  display: none;
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .35);
+  background: #1a1a1e;
+  color: #d8d8dc;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+#custom-presets.edit-mode .lc-dot-remove { display: flex; }
+.lc-dot-remove:hover { background: #c0392b; border-color: #c0392b; color: #fff; }
+
 /* ============================================================
    6. SLIDERS
    ============================================================ */

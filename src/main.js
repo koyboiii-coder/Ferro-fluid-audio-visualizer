@@ -446,13 +446,20 @@ scene.add(blobRing);
 let activeBlob = blobSphere;
 
 const materialSection = document.getElementById("material-section");
+// Spike density/sharpness only mean anything for the sphere's Worley-noise
+// displacement, and rotation speed is a sphere-only spin — the ring stays
+// rounded and doesn't spin the same way regardless of these values, so they
+// have nothing to actually control once "Aro" is selected.
+const sphereOnlyRows = ["complexity-row", "sharpness-row", "rotation-row"].map((id) => document.getElementById(id));
 
 function setShape(mesh) {
   activeBlob = mesh;
   blobSphere.visible = mesh === blobSphere;
   blobRing.visible = mesh === blobRing;
   blobSphereEchoes.forEach((echo) => (echo.visible = mesh === blobSphere));
-  materialSection.style.display = mesh === blobSphere ? "" : "none";
+  const isSphere = mesh === blobSphere;
+  materialSection.style.display = isSphere ? "" : "none";
+  sphereOnlyRows.forEach((row) => (row.style.display = isSphere ? "" : "none"));
 }
 
 const shapeSphereBtn = document.getElementById("shape-sphere");
@@ -822,6 +829,14 @@ function applyPreset(preset) {
   colorB.value = preset.b;
   colorGlow.value = preset.glow;
   colorBg.value = preset.bg;
+  // Only custom (user-saved) presets carry an iris value — built-in ones
+  // never touch it, leaving Iris exactly as the person last set it, same
+  // as clicking a built-in preset always has.
+  if (preset.iris) {
+    colorIris.value = preset.iris;
+    uniforms.uIrisTint.value.set(preset.iris);
+    document.documentElement.style.setProperty("--player-iris", preset.iris);
+  }
   uniforms.uColorA.value.set(preset.a);
   uniforms.uColorB.value.set(preset.b);
   accentLight.color.set(preset.glow);
@@ -859,8 +874,7 @@ PRESETS.forEach((preset, i) => {
   dot.style.background = `radial-gradient(circle at 35% 30%, ${preset.b}, ${preset.glow} 55%, ${preset.a})`;
   dot.addEventListener("click", () => {
     applyPreset(preset);
-    presetDots.forEach((d) => d.classList.remove("is-active"));
-    dot.classList.add("is-active");
+    setActiveDot(dot);
   });
   presetDots.push(dot);
   presetsEl.appendChild(dot);
@@ -868,6 +882,117 @@ PRESETS.forEach((preset, i) => {
 
 applyPreset(PRESETS[0]);
 presetDots[0].classList.add("is-active");
+
+// ---------- UI: custom (user-saved) palettes ----------
+// Same localStorage on every platform this app ships on (web, Electron,
+// Android/Capacitor) — Capacitor's WebView backs localStorage with its own
+// on-device storage the same way any browser does, no native plugin needed.
+const CUSTOM_PRESETS_KEY = "nikkiro-custom-presets";
+
+function loadCustomPresets() {
+  try {
+    const raw = localStorage.getItem(CUSTOM_PRESETS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomPresets(list) {
+  localStorage.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(list));
+}
+
+let customPresets = loadCustomPresets();
+const customPresetsEl = document.getElementById("custom-presets");
+const editPresetsBtn = document.getElementById("btn-edit-presets");
+let customDots = [];
+
+// "Editar" toggles per-swatch delete buttons on/off instead of showing them
+// all the time — a tiny badge on every custom swatch read as cluttered and
+// was hard to hit reliably at that size; opt-in via this toggle instead.
+editPresetsBtn.addEventListener("click", () => {
+  const editing = customPresetsEl.classList.toggle("edit-mode");
+  editPresetsBtn.classList.toggle("is-active", editing);
+  editPresetsBtn.textContent = editing ? "Listo" : "Editar";
+});
+
+// A single "active" tracker spanning both built-in and custom dots — picking
+// one always clears the other, so exactly one swatch is ever highlighted.
+function setActiveDot(dot) {
+  presetDots.forEach((d) => d.classList.remove("is-active"));
+  customDots.forEach((d) => d.classList.remove("is-active"));
+  dot.classList.add("is-active");
+}
+function renderCustomPresets() {
+  customPresetsEl.innerHTML = "";
+  customDots = [];
+
+  customPresets.forEach((preset) => {
+    const wrap = document.createElement("div");
+    wrap.className = "lc-dot-wrap";
+
+    const dot = document.createElement("button");
+    dot.className = "lc-dot";
+    dot.type = "button";
+    dot.title = preset.name;
+    dot.style.background = `radial-gradient(circle at 35% 30%, ${preset.b}, ${preset.glow} 55%, ${preset.a})`;
+    dot.addEventListener("click", () => {
+      applyPreset(preset);
+      setActiveDot(dot);
+    });
+
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "lc-dot-remove";
+    removeBtn.type = "button";
+    removeBtn.title = `Eliminar "${preset.name}"`;
+    removeBtn.textContent = "×";
+    removeBtn.addEventListener("click", (e) => {
+      e.stopPropagation(); // don't also trigger the dot's own click above
+      customPresets = customPresets.filter((p) => p.id !== preset.id);
+      saveCustomPresets(customPresets);
+      renderCustomPresets();
+    });
+
+    wrap.append(dot, removeBtn);
+    customPresetsEl.appendChild(wrap);
+    customDots.push(dot);
+  });
+
+  const addDot = document.createElement("button");
+  addDot.className = "lc-dot lc-dot-add";
+  addDot.type = "button";
+  addDot.title = "Guardar los colores actuales como paleta nueva";
+  addDot.textContent = "+";
+  addDot.addEventListener("click", () => {
+    const name = prompt("Nombre de la paleta:", `Personalizado ${customPresets.length + 1}`);
+    if (!name) return; // cancelled
+    const preset = {
+      id: Date.now(),
+      name,
+      a: colorA.value,
+      b: colorB.value,
+      glow: colorGlow.value,
+      bg: colorBg.value,
+      iris: colorIris.value,
+    };
+    customPresets.push(preset);
+    saveCustomPresets(customPresets);
+    renderCustomPresets();
+  });
+  customPresetsEl.appendChild(addDot);
+
+  // Nothing to edit once the last custom preset is gone — hide the toggle
+  // and drop out of edit mode rather than leaving a button that does nothing.
+  editPresetsBtn.hidden = customPresets.length === 0;
+  if (customPresets.length === 0) {
+    customPresetsEl.classList.remove("edit-mode");
+    editPresetsBtn.classList.remove("is-active");
+    editPresetsBtn.textContent = "Editar";
+  }
+}
+
+renderCustomPresets();
 
 // ---------- UI: sliders ----------
 const sensitivity = document.getElementById("sensitivity");

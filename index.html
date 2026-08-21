@@ -143,6 +143,14 @@
         </section>
 
         <section>
+          <div class="lc-section-header">
+            <label class="lc-section-label">Mis paletas</label>
+            <button id="btn-edit-presets" class="lc-edit-btn" type="button" hidden>Editar</button>
+          </div>
+          <div class="lc-swatch-grid" id="custom-presets"></div>
+        </section>
+
+        <section>
           <label class="lc-section-label">Colores</label>
           <div class="row colors">
             <label class="color-field">Valle<input type="color" id="colorA" value="#050506" /></label>
@@ -163,15 +171,15 @@
             <label class="lc-slider-label">Suavizado</label>
             <input type="range" class="lc-slider" id="smoothing" min="0" max="0.9" step="0.01" value="0.35" />
           </div>
-          <div class="slider-row">
+          <div class="slider-row" id="complexity-row">
             <label class="lc-slider-label">Densidad de picos</label>
             <input type="range" class="lc-slider" id="complexity" min="2" max="22" step="0.1" value="7.5" />
           </div>
-          <div class="slider-row">
+          <div class="slider-row" id="sharpness-row">
             <label class="lc-slider-label">Nitidez</label>
             <input type="range" class="lc-slider" id="sharpness" min="1" max="8" step="0.1" value="2.4" />
           </div>
-          <div class="slider-row">
+          <div class="slider-row" id="rotation-row">
             <label class="lc-slider-label">Rotación</label>
             <input type="range" class="lc-slider" id="rotationSpeed" min="0" max="1" step="0.01" value="0.15" />
           </div>
