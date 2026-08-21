@@ -613,6 +613,14 @@ body.android-app #drop-hint {
   border-color: rgba(255, 255, 255, 0.28);
 }
 
+/* A single local file has no "next track" to skip to — dim the transport
+   buttons rather than hide them, so the bar's shape doesn't shift between
+   local-file and background-session display. */
+#media-bar.local-file .mb-navbtn {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
 /* Letrero-LED style ticker: only turned on (via JS adding this class once it
    measures real overflow) for titles that don't fit their lane, so short
    ones stay put instead of jittering. */

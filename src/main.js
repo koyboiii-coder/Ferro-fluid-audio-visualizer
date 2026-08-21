@@ -674,6 +674,7 @@ function turnAudioOff() {
   playbackRow.style.display = "none";
   btnPlayPause.textContent = "▶";
   document.body.classList.remove("playing");
+  hideLocalFileBar();
 }
 
 btnFile.addEventListener("click", () => {
@@ -698,6 +699,7 @@ async function handleAudioFile(file) {
   playbackRow.style.display = "flex";
   btnPlayPause.textContent = "⏸";
   document.body.classList.add("playing");
+  showLocalFileBar(file.name);
 }
 
 // Android (Capacitor): getUserMedia's own WebView permission round-trip
@@ -752,6 +754,7 @@ btnSystem.addEventListener("click", async () => {
 btnPlayPause.addEventListener("click", () => {
   const playing = audio.togglePlayback();
   btnPlayPause.textContent = playing ? "⏸" : "▶";
+  playPauseBtn.classList.toggle("is-playing", playing); // keep the media-bar's own icon in sync
 });
 
 ["dragenter", "dragover"].forEach((evt) =>
@@ -962,249 +965,325 @@ if (window.Capacitor?.getPlatform?.() === "android") {
   refreshNotifAccessBanner();
 }
 
-// Now-playing bar ("Doble anillo" — design handoff variant 2a): fed by
-  // whichever platform bridge is available — Electron polls Windows' SMTC,
-  // Android's NowPlayingPlugin reads MediaSessionManager (see
-  // NowPlayingListenerService.kt) — normalized to the same shape here so
-  // the rest of this block (ring drag math, marquee, transport buttons)
-  // doesn't need to know which platform it's on. The bar stays out of the
-  // DOM's visible flow entirely until a session is actually detected, and
-  // disappears again the moment it isn't.
-  const mediaBridge = window.electronAPI?.media
-    ? window.electronAPI.media
-    : window.Capacitor?.Plugins?.NowPlaying
-    ? {
-        onUpdate: (cb) => {
-          const plugin = window.Capacitor.Plugins.NowPlaying;
-          // addListener() is async (returns Promise<PluginListenerHandle>),
-          // unlike Electron's synchronous ipcRenderer.on/removeListener.
-          const handlePromise = plugin.addListener("nowPlayingUpdate", cb);
-          plugin.getCurrentState().then(cb);
-          return () => handlePromise.then((handle) => handle.remove());
-        },
-        play: () => window.Capacitor.Plugins.NowPlaying.play(),
-        pause: () => window.Capacitor.Plugins.NowPlaying.pause(),
-        next: () => window.Capacitor.Plugins.NowPlaying.next(),
-        previous: () => window.Capacitor.Plugins.NowPlaying.previous(),
-        setVolume: (level) => window.Capacitor.Plugins.NowPlaying.setVolume({ level }),
-      }
-    : null;
+// Now-playing bar ("Doble anillo" — design handoff variant 2a): normally
+// fed by whichever platform bridge is available — Electron polls Windows'
+// SMTC, Android's NowPlayingPlugin reads MediaSessionManager (see
+// NowPlayingListenerService.kt) — normalized to the same shape below.
+// Local file playback (the "Archivo" source) shadows that entirely while
+// active: the person picked that file on purpose and wants to see/control
+// it, not background context like a paused Spotify session they didn't
+// choose. The bar stays out of the DOM's visible flow entirely until
+// there's something — local or background — to actually show.
+const mediaBar = document.getElementById("media-bar");
+const mbArtist = document.getElementById("mb-artist");
+const mbSource = document.getElementById("mb-source");
+const mediaTitleWrap = document.getElementById("media-title-wrap");
+const mediaTitle = document.getElementById("media-title");
+const mbElapsed = document.getElementById("mb-elapsed");
+const mbRemaining = document.getElementById("mb-remaining");
+const ringOuter = document.getElementById("mb-ring-outer");
+const ringInner = document.getElementById("mb-ring-inner");
+const ringsEl = document.getElementById("mb-rings");
+const playPauseBtn = document.getElementById("media-playpause");
+const mediaPrevBtn = document.getElementById("media-prev");
+const mediaNextBtn = document.getElementById("media-next");
+let lastTitle = null;
 
-  if (mediaBridge) {
-    const mediaBar = document.getElementById("media-bar");
-    const mbArtist = document.getElementById("mb-artist");
-    const mbSource = document.getElementById("mb-source");
-    const mediaTitleWrap = document.getElementById("media-title-wrap");
-    const mediaTitle = document.getElementById("media-title");
-    const mbElapsed = document.getElementById("mb-elapsed");
-    const mbRemaining = document.getElementById("mb-remaining");
-    const ringOuter = document.getElementById("mb-ring-outer");
-    const ringInner = document.getElementById("mb-ring-inner");
-    const ringsEl = document.getElementById("mb-rings");
-    const playPauseBtn = document.getElementById("media-playpause");
-    let lastTitle = null;
+function formatTime(totalSeconds) {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
 
-    // Real system master volume (not SMTC — it has no volume API, only
-    // transport controls + metadata; see electron/media-session.cjs's Core
-    // Audio / IAudioEndpointVolume bridge). Stays null (ring at rest) until
-    // the first real reading arrives, and is optimistically updated locally
-    // on drag/keyboard before the IPC round-trip to main.cjs confirms it.
-    let volume = null;
-    let draggingVolume = false;
-
-    function renderVolume(level) {
-      volume = Math.max(0, Math.min(1, level));
-      // Set on #mb-rings (a shared ancestor of both the ring and the
-      // thumb dot below it), not ringInner directly — the property is
-      // declared inheriting, so one write here reaches both.
-      ringsEl.style.setProperty("--mb-volume-deg", `${volume * 360}deg`);
-      ringsEl.setAttribute("aria-valuenow", String(Math.round(volume * 100)));
-    }
-
-    // Coalesced on the renderer side too (not just in main.cjs): a fast
-    // drag fires many pointermove events, and only the trailing value
-    // actually needs to reach Spotify.
-    let volumeSendTimer = null;
-    function scheduleSetVolume(level) {
-      clearTimeout(volumeSendTimer);
-      volumeSendTimer = setTimeout(() => mediaBridge.setVolume(level), 100);
-    }
-    function flushSetVolume(level) {
-      clearTimeout(volumeSendTimer);
-      mediaBridge.setVolume(level);
-    }
-
-    function angleFromPointer(clientX, clientY, rect) {
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      // Ring starts at 12 o'clock and advances clockwise (matches the
-      // conic-gradient's `from 0deg`) — atan2 measures from 3 o'clock, so
-      // +90° aligns them.
-      let deg = Math.atan2(clientY - cy, clientX - cx) * (180 / Math.PI) + 90;
-      if (deg < 0) deg += 360;
-      return deg; // 0-360
-    }
-
-    // Tracked as an *unwrapped* cumulative angle during a drag (can go
-    // below 0 or above 360) rather than recomputing a fresh 0-360 angle
-    // each move — the latter made the volume snap back to 0% the moment a
-    // continued drag crossed back over the 12-o'clock seam, instead of
-    // just maxing out at 100% like a real knob.
-    let dragLastAngle = 0;
-    let dragCumulativeDeg = 0;
-
-    ringsEl.addEventListener("pointerdown", (e) => {
-      const rect = ringsEl.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
-      // A generous inner radius is left untouched for the play button
-      // (~35px+ at the default 132px ring size), so a plain click there
-      // still just toggles playback instead of starting a volume drag.
-      if (dist < rect.width * 0.27) return;
-      draggingVolume = true;
-      ringsEl.setPointerCapture(e.pointerId);
-      const angle = angleFromPointer(e.clientX, e.clientY, rect);
-      dragLastAngle = angle;
-      dragCumulativeDeg = angle;
-      const level = Math.max(0, Math.min(360, dragCumulativeDeg)) / 360;
-      renderVolume(level);
-      scheduleSetVolume(level);
-      e.preventDefault();
-    });
-
-    ringsEl.addEventListener("pointermove", (e) => {
-      if (!draggingVolume) return;
-      const angle = angleFromPointer(e.clientX, e.clientY, ringsEl.getBoundingClientRect());
-      let delta = angle - dragLastAngle;
-      if (delta > 180) delta -= 360; // crossed the seam counter-clockwise
-      if (delta < -180) delta += 360; // crossed the seam clockwise
-      dragCumulativeDeg += delta;
-      dragLastAngle = angle;
-      const level = Math.max(0, Math.min(360, dragCumulativeDeg)) / 360;
-      renderVolume(level);
-      scheduleSetVolume(level);
-    });
-
-    function endVolumeDrag() {
-      if (!draggingVolume) return;
-      draggingVolume = false;
-      if (volume != null) flushSetVolume(volume);
-    }
-    ringsEl.addEventListener("pointerup", endVolumeDrag);
-    ringsEl.addEventListener("pointercancel", endVolumeDrag);
-
-    // Keyboard equivalent (README a11y note: arrow keys as a substitute for
-    // the drag interaction) — ↑/→ raise, ↓/← lower, in 5% steps.
-    ringsEl.tabIndex = 0;
-    ringsEl.setAttribute("role", "slider");
-    ringsEl.setAttribute("aria-label", "Volumen");
-    ringsEl.setAttribute("aria-valuemin", "0");
-    ringsEl.setAttribute("aria-valuemax", "100");
-    ringsEl.addEventListener("keydown", (e) => {
-      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
-      e.preventDefault();
-      const delta = e.key === "ArrowUp" || e.key === "ArrowRight" ? 0.05 : -0.05;
-      const level = Math.max(0, Math.min(1, (volume ?? 0) + delta));
-      renderVolume(level);
-      flushSetVolume(level);
-    });
-
-    // Letrero-LED marquee: only scrolls a title that actually doesn't fit
-    // its lane — measured after the real text is in the DOM, since that's
-    // the only reliable way to know if it overflows.
-    function updateMarquee(wrapEl, textEl, text) {
-      wrapEl.classList.remove("marquee-active");
-      textEl.style.removeProperty("--marquee-distance");
-      textEl.style.removeProperty("--marquee-duration");
-      textEl.textContent = text;
-      void textEl.offsetWidth; // force reflow so a restarted animation begins at 0%
-      const overflow = textEl.scrollWidth - wrapEl.clientWidth;
-      if (overflow > 2) {
-        textEl.style.setProperty("--marquee-distance", `-${overflow}px`);
-        textEl.style.setProperty("--marquee-duration", `${Math.max(5, overflow / 25)}s`);
-        wrapEl.classList.add("marquee-active");
-      }
-    }
-
-    function formatTime(totalSeconds) {
-      const s = Math.max(0, Math.floor(totalSeconds));
-      return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-    }
-
-    // Progress state + rAF loop: SMTC only reports a position/timestamp
-    // snapshot every poll (~2s), not a continuous feed. The ring is driven
-    // by real elapsed wall-clock time since that snapshot (position +
-    // (now - lastUpdated) while playing) via requestAnimationFrame, rather
-    // than a separate setInterval counting its own seconds — that would
-    // drift out of sync with Spotify's actual position over time.
-    let media = { active: false, status: "Paused", position: 0, duration: 0, lastUpdated: Date.now() };
-    let rafId = null;
-    let lastRenderedSecond = -1;
-
-    function currentPosition() {
-      if (media.status !== "Playing") return media.position;
-      const elapsed = (Date.now() - media.lastUpdated) / 1000;
-      return Math.min(media.duration, media.position + Math.max(0, elapsed));
-    }
-
-    function renderProgress() {
-      const pos = currentPosition();
-      const duration = media.duration || 1;
-      const deg = Math.min(360, (pos / duration) * 360);
-      ringOuter.style.setProperty("--mb-progress-deg", `${deg}deg`);
-
-      const second = Math.floor(pos);
-      if (second !== lastRenderedSecond) {
-        lastRenderedSecond = second;
-        mbElapsed.textContent = formatTime(pos);
-        mbRemaining.textContent = `-${formatTime(media.duration - pos)}`;
-      }
-
-      rafId = media.active && media.status === "Playing" ? requestAnimationFrame(renderProgress) : null;
-    }
-
-    function startProgressLoop() {
-      if (rafId == null) rafId = requestAnimationFrame(renderProgress);
-    }
-
-    mediaBridge.onUpdate((state) => {
-      mediaBar.classList.toggle("visible", !!state.active);
-      if (!state.active) return;
-
-      const title = state.title || "";
-      if (title !== lastTitle) {
-        updateMarquee(mediaTitleWrap, mediaTitle, title);
-        lastTitle = title;
-      }
-      mbArtist.textContent = state.artist || "";
-      mbSource.textContent = state.source ? `Desde ${state.source}` : "";
-
-      // Skip while the user's own drag is in progress — an incoming poll
-      // (esp. the slow ~15s resync) would otherwise yank the ring away
-      // from their pointer mid-gesture.
-      if (typeof state.volume === "number" && !draggingVolume) {
-        renderVolume(state.volume);
-      }
-
-      media = {
-        active: true,
-        status: state.status,
-        position: state.position || 0,
-        duration: state.duration || 0,
-        lastUpdated: state.lastUpdated || Date.now(),
-      };
-      playPauseBtn.classList.toggle("is-playing", media.status === "Playing");
-      renderProgress();
-      if (media.status === "Playing") startProgressLoop();
-    });
-
-    playPauseBtn.addEventListener("click", () => {
-      (media.status === "Playing" ? mediaBridge.pause : mediaBridge.play)();
-    });
-    document.getElementById("media-prev").addEventListener("click", () => mediaBridge.previous());
-    document.getElementById("media-next").addEventListener("click", () => mediaBridge.next());
+// Letrero-LED marquee: only scrolls a title that actually doesn't fit its
+// lane — measured after the real text is in the DOM, since that's the
+// only reliable way to know if it overflows.
+function updateMarquee(wrapEl, textEl, text) {
+  wrapEl.classList.remove("marquee-active");
+  textEl.style.removeProperty("--marquee-distance");
+  textEl.style.removeProperty("--marquee-duration");
+  textEl.textContent = text;
+  void textEl.offsetWidth; // force reflow so a restarted animation begins at 0%
+  const overflow = textEl.scrollWidth - wrapEl.clientWidth;
+  if (overflow > 2) {
+    textEl.style.setProperty("--marquee-distance", `-${overflow}px`);
+    textEl.style.setProperty("--marquee-duration", `${Math.max(5, overflow / 25)}s`);
+    wrapEl.classList.add("marquee-active");
   }
+}
+
+let localFileActive = false;
+let localFileRafId = null;
+
+function renderLocalFileProgress() {
+  const el = audio.audioEl;
+  if (!el) return;
+  const duration = el.duration || 0;
+  const pos = el.currentTime || 0;
+  const deg = duration ? Math.min(360, (pos / duration) * 360) : 0;
+  ringOuter.style.setProperty("--mb-progress-deg", `${deg}deg`);
+  mbElapsed.textContent = formatTime(pos);
+  mbRemaining.textContent = `-${formatTime(Math.max(0, duration - pos))}`;
+  playPauseBtn.classList.toggle("is-playing", !el.paused);
+  localFileRafId = localFileActive ? requestAnimationFrame(renderLocalFileProgress) : null;
+}
+
+function showLocalFileBar(name) {
+  localFileActive = true;
+  mediaBar.classList.add("visible", "local-file");
+  if (name !== lastTitle) {
+    updateMarquee(mediaTitleWrap, mediaTitle, name);
+    lastTitle = name;
+  }
+  mbArtist.textContent = "";
+  mbSource.textContent = "";
+  if (localFileRafId == null) localFileRafId = requestAnimationFrame(renderLocalFileProgress);
+}
+
+function hideLocalFileBar() {
+  if (!localFileActive) return;
+  localFileActive = false;
+  mediaBar.classList.remove("local-file");
+  if (localFileRafId != null) {
+    cancelAnimationFrame(localFileRafId);
+    localFileRafId = null;
+  }
+  lastTitle = null;
+  // Fall back to whatever the background session bridge last reported.
+  if (media.active) {
+    mediaBar.classList.add("visible");
+    updateMarquee(mediaTitleWrap, mediaTitle, media.title || "");
+    lastTitle = media.title || "";
+    mbArtist.textContent = media.artist || "";
+    mbSource.textContent = media.source ? `Desde ${media.source}` : "";
+    renderProgress();
+    if (media.status === "Playing") startProgressLoop();
+  } else {
+    mediaBar.classList.remove("visible");
+  }
+}
+
+const mediaBridge = window.electronAPI?.media
+  ? window.electronAPI.media
+  : window.Capacitor?.Plugins?.NowPlaying
+  ? {
+      onUpdate: (cb) => {
+        const plugin = window.Capacitor.Plugins.NowPlaying;
+        // addListener() is async (returns Promise<PluginListenerHandle>),
+        // unlike Electron's synchronous ipcRenderer.on/removeListener.
+        const handlePromise = plugin.addListener("nowPlayingUpdate", cb);
+        plugin.getCurrentState().then(cb);
+        return () => handlePromise.then((handle) => handle.remove());
+      },
+      play: () => window.Capacitor.Plugins.NowPlaying.play(),
+      pause: () => window.Capacitor.Plugins.NowPlaying.pause(),
+      next: () => window.Capacitor.Plugins.NowPlaying.next(),
+      previous: () => window.Capacitor.Plugins.NowPlaying.previous(),
+      setVolume: (level) => window.Capacitor.Plugins.NowPlaying.setVolume({ level }),
+    }
+  : null;
+
+// Progress state + rAF loop: SMTC only reports a position/timestamp
+// snapshot every poll (~2s), not a continuous feed. The ring is driven by
+// real elapsed wall-clock time since that snapshot (position + (now -
+// lastUpdated) while playing) via requestAnimationFrame, rather than a
+// separate setInterval counting its own seconds — that would drift out of
+// sync with Spotify's actual position over time.
+let media = { active: false, status: "Paused", title: "", artist: "", source: "", position: 0, duration: 0, lastUpdated: Date.now() };
+let rafId = null;
+let lastRenderedSecond = -1;
+
+function currentPosition() {
+  if (media.status !== "Playing") return media.position;
+  const elapsed = (Date.now() - media.lastUpdated) / 1000;
+  return Math.min(media.duration, media.position + Math.max(0, elapsed));
+}
+
+function renderProgress() {
+  const pos = currentPosition();
+  const duration = media.duration || 1;
+  const deg = Math.min(360, (pos / duration) * 360);
+  ringOuter.style.setProperty("--mb-progress-deg", `${deg}deg`);
+
+  const second = Math.floor(pos);
+  if (second !== lastRenderedSecond) {
+    lastRenderedSecond = second;
+    mbElapsed.textContent = formatTime(pos);
+    mbRemaining.textContent = `-${formatTime(media.duration - pos)}`;
+  }
+
+  rafId = media.active && media.status === "Playing" ? requestAnimationFrame(renderProgress) : null;
+}
+
+function startProgressLoop() {
+  if (rafId == null) rafId = requestAnimationFrame(renderProgress);
+}
+
+if (mediaBridge) {
+  // Real system master volume (not SMTC — it has no volume API, only
+  // transport controls + metadata; see electron/media-session.cjs's Core
+  // Audio / IAudioEndpointVolume bridge). Stays null (ring at rest) until
+  // the first real reading arrives, and is optimistically updated locally
+  // on drag/keyboard before the IPC round-trip to main.cjs confirms it.
+  let volume = null;
+  let draggingVolume = false;
+
+  function renderVolume(level) {
+    volume = Math.max(0, Math.min(1, level));
+    // Set on #mb-rings (a shared ancestor of both the ring and the
+    // thumb dot below it), not ringInner directly — the property is
+    // declared inheriting, so one write here reaches both.
+    ringsEl.style.setProperty("--mb-volume-deg", `${volume * 360}deg`);
+    ringsEl.setAttribute("aria-valuenow", String(Math.round(volume * 100)));
+  }
+
+  // Coalesced on the renderer side too (not just in main.cjs): a fast
+  // drag fires many pointermove events, and only the trailing value
+  // actually needs to reach Spotify.
+  let volumeSendTimer = null;
+  function scheduleSetVolume(level) {
+    clearTimeout(volumeSendTimer);
+    volumeSendTimer = setTimeout(() => mediaBridge.setVolume(level), 100);
+  }
+  function flushSetVolume(level) {
+    clearTimeout(volumeSendTimer);
+    mediaBridge.setVolume(level);
+  }
+
+  function angleFromPointer(clientX, clientY, rect) {
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    // Ring starts at 12 o'clock and advances clockwise (matches the
+    // conic-gradient's `from 0deg`) — atan2 measures from 3 o'clock, so
+    // +90° aligns them.
+    let deg = Math.atan2(clientY - cy, clientX - cx) * (180 / Math.PI) + 90;
+    if (deg < 0) deg += 360;
+    return deg; // 0-360
+  }
+
+  // Tracked as an *unwrapped* cumulative angle during a drag (can go
+  // below 0 or above 360) rather than recomputing a fresh 0-360 angle
+  // each move — the latter made the volume snap back to 0% the moment a
+  // continued drag crossed back over the 12-o'clock seam, instead of
+  // just maxing out at 100% like a real knob.
+  let dragLastAngle = 0;
+  let dragCumulativeDeg = 0;
+
+  ringsEl.addEventListener("pointerdown", (e) => {
+    const rect = ringsEl.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
+    // A generous inner radius is left untouched for the play button
+    // (~35px+ at the default 132px ring size), so a plain click there
+    // still just toggles playback instead of starting a volume drag.
+    if (dist < rect.width * 0.27) return;
+    draggingVolume = true;
+    ringsEl.setPointerCapture(e.pointerId);
+    const angle = angleFromPointer(e.clientX, e.clientY, rect);
+    dragLastAngle = angle;
+    dragCumulativeDeg = angle;
+    const level = Math.max(0, Math.min(360, dragCumulativeDeg)) / 360;
+    renderVolume(level);
+    scheduleSetVolume(level);
+    e.preventDefault();
+  });
+
+  ringsEl.addEventListener("pointermove", (e) => {
+    if (!draggingVolume) return;
+    const angle = angleFromPointer(e.clientX, e.clientY, ringsEl.getBoundingClientRect());
+    let delta = angle - dragLastAngle;
+    if (delta > 180) delta -= 360; // crossed the seam counter-clockwise
+    if (delta < -180) delta += 360; // crossed the seam clockwise
+    dragCumulativeDeg += delta;
+    dragLastAngle = angle;
+    const level = Math.max(0, Math.min(360, dragCumulativeDeg)) / 360;
+    renderVolume(level);
+    scheduleSetVolume(level);
+  });
+
+  function endVolumeDrag() {
+    if (!draggingVolume) return;
+    draggingVolume = false;
+    if (volume != null) flushSetVolume(volume);
+  }
+  ringsEl.addEventListener("pointerup", endVolumeDrag);
+  ringsEl.addEventListener("pointercancel", endVolumeDrag);
+
+  // Keyboard equivalent (README a11y note: arrow keys as a substitute for
+  // the drag interaction) — ↑/→ raise, ↓/← lower, in 5% steps.
+  ringsEl.tabIndex = 0;
+  ringsEl.setAttribute("role", "slider");
+  ringsEl.setAttribute("aria-label", "Volumen");
+  ringsEl.setAttribute("aria-valuemin", "0");
+  ringsEl.setAttribute("aria-valuemax", "100");
+  ringsEl.addEventListener("keydown", (e) => {
+    if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
+    e.preventDefault();
+    const delta = e.key === "ArrowUp" || e.key === "ArrowRight" ? 0.05 : -0.05;
+    const level = Math.max(0, Math.min(1, (volume ?? 0) + delta));
+    renderVolume(level);
+    flushSetVolume(level);
+  });
+
+  mediaBridge.onUpdate((state) => {
+    media = {
+      active: !!state.active,
+      status: state.status,
+      title: state.title || "",
+      artist: state.artist || "",
+      source: state.source || "",
+      position: state.position || 0,
+      duration: state.duration || 0,
+      lastUpdated: state.lastUpdated || Date.now(),
+    };
+
+    // Local file playback owns the bar's display while active (see
+    // showLocalFileBar/hideLocalFileBar above) — just keep the background
+    // session's own state updated above so it's ready to show the moment
+    // the file source is turned off.
+    if (localFileActive) return;
+
+    mediaBar.classList.toggle("visible", media.active);
+    if (!media.active) return;
+
+    if (media.title !== lastTitle) {
+      updateMarquee(mediaTitleWrap, mediaTitle, media.title);
+      lastTitle = media.title;
+    }
+    mbArtist.textContent = media.artist;
+    mbSource.textContent = media.source ? `Desde ${media.source}` : "";
+
+    // Skip while the user's own drag is in progress — an incoming poll
+    // (esp. the slow ~15s resync) would otherwise yank the ring away
+    // from their pointer mid-gesture.
+    if (typeof state.volume === "number" && !draggingVolume) {
+      renderVolume(state.volume);
+    }
+
+    playPauseBtn.classList.toggle("is-playing", media.status === "Playing");
+    renderProgress();
+    if (media.status === "Playing") startProgressLoop();
+  });
+}
+
+playPauseBtn.addEventListener("click", () => {
+  if (localFileActive) {
+    const playing = audio.togglePlayback();
+    btnPlayPause.textContent = playing ? "⏸" : "▶"; // keep the panel's own button in sync
+    playPauseBtn.classList.toggle("is-playing", playing);
+    return;
+  }
+  if (!mediaBridge) return;
+  (media.status === "Playing" ? mediaBridge.pause : mediaBridge.play)();
+});
+mediaPrevBtn.addEventListener("click", () => {
+  if (localFileActive || !mediaBridge) return;
+  mediaBridge.previous();
+});
+mediaNextBtn.addEventListener("click", () => {
+  if (localFileActive || !mediaBridge) return;
+  mediaBridge.next();
+});
 
 // ---------- animation loop ----------
 const clock = new THREE.Clock();
