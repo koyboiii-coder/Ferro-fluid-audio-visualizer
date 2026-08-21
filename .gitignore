@@ -4,6 +4,17 @@ release/
 *.log
 .DS_Store
 
+# Android (Capacitor) — native project is scaffolded by `npx cap add android`,
+# build output/local machine config/signing material should never be committed
+android/app/build/
+android/.gradle/
+android/local.properties
+android/app/release/
+android/app/src/main/assets/public/
+android/keystore.properties
+*.jks
+*.keystore
+
 # original design-brief drop (already incorporated into src/styles/)
 Visualizador audio reactivo cromo/
 Visualizador audio reactivo cromo.zip

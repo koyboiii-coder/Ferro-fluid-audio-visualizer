@@ -11,12 +11,19 @@
     "icons": "node electron/generate-icons.cjs && node electron/make-ico.cjs",
     "electron:dev": "concurrently -k \"npm:dev\" \"wait-on tcp:5173 && electron .\"",
     "electron:build": "vite build && electron-builder",
-    "dist": "npm run electron:build"
+    "dist": "npm run electron:build",
+    "cap:sync": "vite build && npx cap sync android",
+    "cap:open": "npx cap open android",
+    "android:debug": "npm run cap:sync && cd android && ./gradlew assembleDebug",
+    "android:apk": "npm run cap:sync && cd android && ./gradlew assembleRelease"
   },
   "dependencies": {
+    "@capacitor/android": "^7.4.4",
+    "@capacitor/core": "^7.4.4",
     "three": "^0.169.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.4.4",
     "concurrently": "^9.0.1",
     "electron": "^43.4.1",
     "electron-builder": "^26.15.3",
