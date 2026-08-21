@@ -700,12 +700,26 @@ async function handleAudioFile(file) {
   document.body.classList.add("playing");
 }
 
+// Android (Capacitor): getUserMedia's own WebView permission round-trip
+// doesn't reliably resolve back to the page here, so RECORD_AUDIO is
+// requested through this native plugin first — see MainActivity.kt /
+// MicPermissionPlugin.kt for why. No-op on web/Electron, where
+// getUserMedia's own browser-native permission prompt just works.
+const micBridge = window.Capacitor?.Plugins?.MicPermission;
+
 btnMic.addEventListener("click", async () => {
   if (btnMic.classList.contains("is-active")) {
     turnAudioOff();
     return;
   }
   try {
+    if (micBridge) {
+      const { granted } = await micBridge.requestPermission();
+      if (!granted) {
+        alert("No se pudo acceder al micrófono: permiso denegado.");
+        return;
+      }
+    }
     await audio.useMicrophone();
     btnFile.classList.remove("is-active");
     btnSystem.classList.remove("is-active");
