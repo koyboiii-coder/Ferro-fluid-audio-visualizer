@@ -930,6 +930,11 @@ if (window.electronAPI?.isElectron) {
 
 // ---------- Android (Capacitor) mode ----------
 if (window.Capacitor?.getPlatform?.() === "android") {
+  // The panel defaults to open, which makes sense with a desktop window's
+  // spare width — on a phone screen it covers the whole visualizer, so
+  // start collapsed instead.
+  panel.classList.add("hidden");
+
   // getDisplayMedia (audio.js's useSystemAudio) is a desktop-only browser
   // API — there is no Android equivalent, so "Sistema" can't work here.
   const systemBtn = document.getElementById("btn-system");

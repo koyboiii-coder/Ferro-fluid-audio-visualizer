@@ -64,11 +64,20 @@ class NowPlayingListenerService : NotificationListenerService() {
     }
 
     // Prefers whichever session is actually STATE_PLAYING, falling back to
-    // the first available one — mirrors media-session.cjs's
+    // any other *meaningfully loaded* one — mirrors media-session.cjs's
     // "PlaybackStatus -eq Playing | Select-Object -First 1" precedent.
+    // Sessions sitting at NONE/STOPPED/ERROR (e.g. Google Assistant's own
+    // idle session, or an app that failed to sign in) are excluded
+    // entirely rather than just deprioritized — those aren't "now playing"
+    // anything, so showing them would just be a confusing empty bar.
     private fun pickAndPublish() {
-        val controllers = controllerCallbacks.keys.toList()
-        val chosen = controllers.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: controllers.firstOrNull()
+        val relevant = controllerCallbacks.keys.filter {
+            when (it.playbackState?.state) {
+                null, PlaybackState.STATE_NONE, PlaybackState.STATE_STOPPED, PlaybackState.STATE_ERROR -> false
+                else -> true
+            }
+        }
+        val chosen = relevant.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING } ?: relevant.firstOrNull()
 
         if (chosen == null) {
             NowPlayingBridge.clear()
