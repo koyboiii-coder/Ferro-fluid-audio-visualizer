@@ -133,6 +133,42 @@ body.playing #drop-hint {
   opacity: 0;
 }
 
+.notif-access-banner[hidden] {
+  display: none;
+}
+
+.notif-access-banner {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  right: 64px;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(20, 20, 24, 0.75);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  font-family: var(--lc-font-ui);
+  font-size: 12px;
+  color: var(--lc-text-dim);
+}
+
+.notif-access-banner button {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: none;
+  background: var(--lc-accent);
+  color: #0a0b0e;
+  font-family: var(--lc-font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 #panel-toggle {
   position: fixed;
   top: 16px;

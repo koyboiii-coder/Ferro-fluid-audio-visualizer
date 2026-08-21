@@ -11,6 +11,7 @@ import com.getcapacitor.BridgeWebChromeClient
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         registerPlugin(MicPermissionPlugin::class.java)
+        registerPlugin(NowPlayingPlugin::class.java)
         super.onCreate(savedInstanceState)
 
         // BridgeWebChromeClient's own permission-launcher round-trip does not

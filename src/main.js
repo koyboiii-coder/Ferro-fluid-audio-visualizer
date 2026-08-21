@@ -926,13 +926,64 @@ if (window.electronAPI?.isElectron) {
     }
     glassToggleBtn.addEventListener("click", () => window.electronAPI.toggleGlass());
   }
+}
 
-  // Now-playing bar ("Doble anillo" — design handoff variant 2a): main.cjs
-  // polls Windows' SMTC (System Media Transport Controls) for a Spotify
-  // session and pushes updates over IPC. The bar stays out of the DOM's
-  // visible flow entirely until a session is actually detected, and
+// ---------- Android (Capacitor) mode ----------
+if (window.Capacitor?.getPlatform?.() === "android") {
+  // getDisplayMedia (audio.js's useSystemAudio) is a desktop-only browser
+  // API — there is no Android equivalent, so "Sistema" can't work here.
+  const systemBtn = document.getElementById("btn-system");
+  if (systemBtn) systemBtn.remove();
+  const systemHint = document.querySelector(".hint");
+  if (systemHint) systemHint.remove();
+
+  const nowPlaying = window.Capacitor.Plugins.NowPlaying;
+  const banner = document.getElementById("notif-access-banner");
+  const notifBtn = document.getElementById("notif-access-btn");
+
+  async function refreshNotifAccessBanner() {
+    const { granted } = await nowPlaying.checkNotificationAccess();
+    banner.hidden = granted;
+  }
+  notifBtn.addEventListener("click", () => nowPlaying.requestNotificationAccess());
+  // requestNotificationAccess() just opens Settings — there's no grant
+  // callback, so the banner re-checks whenever the app comes back to the
+  // foreground (e.g. the user returning from that Settings screen).
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshNotifAccessBanner();
+  });
+  refreshNotifAccessBanner();
+}
+
+// Now-playing bar ("Doble anillo" — design handoff variant 2a): fed by
+  // whichever platform bridge is available — Electron polls Windows' SMTC,
+  // Android's NowPlayingPlugin reads MediaSessionManager (see
+  // NowPlayingListenerService.kt) — normalized to the same shape here so
+  // the rest of this block (ring drag math, marquee, transport buttons)
+  // doesn't need to know which platform it's on. The bar stays out of the
+  // DOM's visible flow entirely until a session is actually detected, and
   // disappears again the moment it isn't.
-  if (window.electronAPI.media) {
+  const mediaBridge = window.electronAPI?.media
+    ? window.electronAPI.media
+    : window.Capacitor?.Plugins?.NowPlaying
+    ? {
+        onUpdate: (cb) => {
+          const plugin = window.Capacitor.Plugins.NowPlaying;
+          // addListener() is async (returns Promise<PluginListenerHandle>),
+          // unlike Electron's synchronous ipcRenderer.on/removeListener.
+          const handlePromise = plugin.addListener("nowPlayingUpdate", cb);
+          plugin.getCurrentState().then(cb);
+          return () => handlePromise.then((handle) => handle.remove());
+        },
+        play: () => window.Capacitor.Plugins.NowPlaying.play(),
+        pause: () => window.Capacitor.Plugins.NowPlaying.pause(),
+        next: () => window.Capacitor.Plugins.NowPlaying.next(),
+        previous: () => window.Capacitor.Plugins.NowPlaying.previous(),
+        setVolume: (level) => window.Capacitor.Plugins.NowPlaying.setVolume({ level }),
+      }
+    : null;
+
+  if (mediaBridge) {
     const mediaBar = document.getElementById("media-bar");
     const mbArtist = document.getElementById("mb-artist");
     const mbSource = document.getElementById("mb-source");
@@ -969,11 +1020,11 @@ if (window.electronAPI?.isElectron) {
     let volumeSendTimer = null;
     function scheduleSetVolume(level) {
       clearTimeout(volumeSendTimer);
-      volumeSendTimer = setTimeout(() => window.electronAPI.media.setVolume(level), 100);
+      volumeSendTimer = setTimeout(() => mediaBridge.setVolume(level), 100);
     }
     function flushSetVolume(level) {
       clearTimeout(volumeSendTimer);
-      window.electronAPI.media.setVolume(level);
+      mediaBridge.setVolume(level);
     }
 
     function angleFromPointer(clientX, clientY, rect) {
@@ -1110,7 +1161,7 @@ if (window.electronAPI?.isElectron) {
       if (rafId == null) rafId = requestAnimationFrame(renderProgress);
     }
 
-    window.electronAPI.media.onUpdate((state) => {
+    mediaBridge.onUpdate((state) => {
       mediaBar.classList.toggle("visible", !!state.active);
       if (!state.active) return;
 
@@ -1142,12 +1193,11 @@ if (window.electronAPI?.isElectron) {
     });
 
     playPauseBtn.addEventListener("click", () => {
-      (media.status === "Playing" ? window.electronAPI.media.pause : window.electronAPI.media.play)();
+      (media.status === "Playing" ? mediaBridge.pause : mediaBridge.play)();
     });
-    document.getElementById("media-prev").addEventListener("click", () => window.electronAPI.media.previous());
-    document.getElementById("media-next").addEventListener("click", () => window.electronAPI.media.next());
+    document.getElementById("media-prev").addEventListener("click", () => mediaBridge.previous());
+    document.getElementById("media-next").addEventListener("click", () => mediaBridge.next());
   }
-}
 
 // ---------- animation loop ----------
 const clock = new THREE.Clock();
