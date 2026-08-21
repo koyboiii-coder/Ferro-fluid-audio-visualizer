@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Nikkiro Audio Visualizer">
+  <!-- Ring scaled to sit within Android's adaptive-icon safe zone
+       (~66% of the canvas) so launcher masking/parallax never clips it —
+       brand/mark.svg's own ring is sized for a fixed-frame lockup, not an
+       adaptive icon, so it's too large to reuse verbatim here. -->
+  <circle cx="128" cy="128" r="70" fill="none" stroke="#EAF0F7" stroke-width="16"/>
+</svg>
