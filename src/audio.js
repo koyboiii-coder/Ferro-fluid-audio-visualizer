@@ -59,7 +59,12 @@ export class AudioEngine {
     this._disconnectSource();
     this._stopActiveStream();
 
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Explicitly disable OS-level mic processing: on phones especially,
+    // echo cancellation/AGC/noise suppression flatten the transients the
+    // visualizer reacts to.
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, autoGainControl: false, noiseSuppression: false },
+    });
     this._activeStream = stream;
     this.sourceNode = this.context.createMediaStreamSource(stream);
     this.sourceNode.connect(this.analyser);
