@@ -164,14 +164,20 @@ function updatePlayerAccent(peakHex, bgHex) {
   root.setProperty("--player-accent-alt", altHex);
 }
 
+// Phone GPUs (tile-based renderers especially) pay real costs for MSAA and
+// for the bloom/chromatic-aberration passes below running at full
+// resolution that a desktop GPU shrugs off — trimmed here rather than
+// changing the look on desktop, where there's headroom to spare.
+const isAndroid = window.Capacitor?.getPlatform?.() === "android";
+
 const canvas = document.getElementById("scene");
 const renderer = new THREE.WebGLRenderer({
   canvas,
-  antialias: true,
+  antialias: !isAndroid,
   alpha: true,
   powerPreference: "high-performance",
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isAndroid ? 1.5 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 0);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -556,7 +562,16 @@ scene.add(accentLight);
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.15, 0.3, 0.8);
+// UnrealBloomPass's own resolution drives a chain of downsample/blur passes
+// independent of the main render target — trimmed on Android too, same
+// reasoning as the pixel-ratio cap above.
+const bloomScale = isAndroid ? 0.75 : 1;
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth * bloomScale, window.innerHeight * bloomScale),
+  0.15,
+  0.3,
+  0.8
+);
 
 // UnrealBloomPass's internal blur shader hardcodes its output alpha to 1.0
 // for every pixel it touches (three.js keeps this simple because its demos
@@ -650,6 +665,9 @@ window.addEventListener("resize", () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setSize(window.innerWidth, window.innerHeight);
+  // composer.setSize() resets every pass to full resolution, undoing
+  // bloomPass's own reduced-resolution construction above — reapply it.
+  bloomPass.setSize(window.innerWidth * bloomScale, window.innerHeight * bloomScale);
 });
 
 // ---------- Audio ----------

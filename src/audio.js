@@ -25,7 +25,10 @@ export class AudioEngine {
 
   _ensureContext() {
     if (!this.context) {
-      this.context = new (window.AudioContext || window.webkitAudioContext)();
+      // "interactive" (lowest available latency) is already the spec
+      // default for a bare constructor call — set explicitly so intent is
+      // clear rather than relying on that default silently.
+      this.context = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
       this.analyser = this.context.createAnalyser();
       this.analyser.fftSize = 1024;
       this.analyser.smoothingTimeConstant = 0.2;
