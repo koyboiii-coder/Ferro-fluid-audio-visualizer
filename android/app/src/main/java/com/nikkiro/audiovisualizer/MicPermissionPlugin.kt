@@ -38,12 +38,13 @@ class MicPermissionPlugin : Plugin() {
 
     @PluginMethod
     fun requestPermission(call: PluginCall) {
-        if (getPermissionState("microphone") == PermissionState.GRANTED) {
-            val ret = JSObject()
-            ret.put("granted", true)
-            call.resolve(ret)
-            return
-        }
+        // Always delegate to the OS request rather than short-circuiting on
+        // our own getPermissionState() read first — ActivityCompat's own
+        // requestPermissions() already resolves immediately with no dialog
+        // when the permission is genuinely granted, so a pre-check here only
+        // adds a second, potentially-diverging source of truth (suspected
+        // culprit behind a real-device report of no dialog ever appearing,
+        // yet the mic still failing to actually open).
         requestPermissionForAlias("microphone", call, "permissionCallback")
     }
 

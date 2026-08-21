@@ -169,6 +169,21 @@ body.playing #drop-hint {
   cursor: pointer;
 }
 
+/* Android 15+ enforces edge-to-edge by default (targetSdk 35), so the
+   WebView draws straight under the status bar unless top-anchored chrome
+   accounts for it itself — env(safe-area-inset-top) needs viewport-fit=cover
+   on the <meta viewport> tag (set in index.html) to report a real value
+   instead of 0. The fallback (24px) covers WebViews that ignore it. */
+body.android-app #panel-toggle {
+  top: calc(16px + env(safe-area-inset-top, 24px));
+}
+body.android-app #panel-wrap {
+  top: calc(16px + env(safe-area-inset-top, 24px));
+}
+body.android-app #drop-hint {
+  top: calc(20px + env(safe-area-inset-top, 24px));
+}
+
 #panel-toggle {
   position: fixed;
   top: 16px;
@@ -622,6 +637,49 @@ body.playing #drop-hint {
     text-overflow: ellipsis;
     overflow: hidden;
   }
+}
+
+/* The bar's sizing (ring/title/nav) was tuned for a 3440x1440 desktop
+   monitor — on an actual phone screen it overflowed past both edges rather
+   than just looking a bit large, so this isn't the same kind of gradual
+   responsive shrink as the @media block below; it's a fixed phone-sized set
+   of values, since window width on Android is always phone-sized. */
+body.android-app #media-bar {
+  --mb-ring-size: 76px;
+  gap: 12px;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  max-width: calc(100vw - 24px);
+}
+body.android-app .mb-text {
+  width: 44vw;
+}
+body.android-app .media-title-wrap {
+  width: 44vw;
+}
+body.android-app .mb-title {
+  font-size: 20px;
+}
+body.android-app .mb-times {
+  font-size: 12px;
+  gap: 10px;
+}
+body.android-app .mb-divider {
+  min-width: 30px;
+}
+body.android-app .mb-nav {
+  gap: 8px;
+  margin-top: 2px;
+}
+body.android-app .mb-navbtn {
+  height: 34px;
+  padding: 0 10px;
+}
+body.android-app .mb-navbtn svg {
+  width: 16px;
+  height: 16px;
+}
+body.android-app .mb-source {
+  font-size: 9px;
 }
 
 /* Responsive per spec: below ~520px, drop the vertical artist label and

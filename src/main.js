@@ -930,6 +930,8 @@ if (window.electronAPI?.isElectron) {
 
 // ---------- Android (Capacitor) mode ----------
 if (window.Capacitor?.getPlatform?.() === "android") {
+  document.body.classList.add("android-app");
+
   // The panel defaults to open, which makes sense with a desktop window's
   // spare width — on a phone screen it covers the whole visualizer, so
   // start collapsed instead.

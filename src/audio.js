@@ -41,11 +41,19 @@ export class AudioEngine {
     if (!this.audioEl) {
       this.audioEl = new Audio();
       this.audioEl.crossOrigin = "anonymous";
+      this.audioEl.loop = true;
+      // createMediaElementSource() can only ever be called once per
+      // element (throws InvalidStateError on a second call) — create it
+      // here, when the element itself is created, and reuse it on every
+      // subsequent file load instead. Previously this ran on every call,
+      // which broke silently the moment you turned the file source off and
+      // picked a file again (only a full app reload — a fresh audioEl —
+      // recovered it).
+      this.fileSourceNode = this.context.createMediaElementSource(this.audioEl);
     }
     this.audioEl.src = URL.createObjectURL(file);
-    this.audioEl.loop = true;
 
-    this.sourceNode = this.context.createMediaElementSource(this.audioEl);
+    this.sourceNode = this.fileSourceNode;
     this.sourceNode.connect(this.analyser);
     this.analyser.connect(this.context.destination);
 
@@ -59,12 +67,28 @@ export class AudioEngine {
     this._disconnectSource();
     this._stopActiveStream();
 
-    // Explicitly disable OS-level mic processing: on phones especially,
-    // echo cancellation/AGC/noise suppression flatten the transients the
-    // visualizer reacts to.
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, autoGainControl: false, noiseSuppression: false },
-    });
+    // Prefer OS-level mic processing off: echo cancellation/AGC/noise
+    // suppression flatten the transients the visualizer reacts to. `ideal`
+    // (not a bare `false`) matters here — as a hard constraint, some real
+    // phones' audio HAL can't satisfy it and getUserMedia rejects the whole
+    // request with a generic "Could not start audio source" instead of just
+    // falling back to what the hardware actually supports.
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: { ideal: false },
+          autoGainControl: { ideal: false },
+          noiseSuppression: { ideal: false },
+        },
+      });
+    } catch (err) {
+      // Last-resort fallback for whatever device/OS combination still
+      // rejects the constrained request above — plain `{audio: true}` is
+      // the one shape every getUserMedia implementation is guaranteed to
+      // accept if a mic exists and permission is granted at all.
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    }
     this._activeStream = stream;
     this.sourceNode = this.context.createMediaStreamSource(stream);
     this.sourceNode.connect(this.analyser);
